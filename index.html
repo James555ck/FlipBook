@@ -429,9 +429,44 @@
       im.src = src;
     });
   }
-  async function paginateHtml(holder, label){
+  // Word stores the page size/orientation in word/document.xml. A .docx is a zip, so pull that one file out.
+  async function docxIsPortrait(file){
+    try {
+      var buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer);
+      var eocd = -1;
+      for (var i = buf.length - 22; i >= Math.max(0, buf.length - 70000); i--){ if (dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; } }
+      if (eocd < 0) return false;
+      var count = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), dec = new TextDecoder();
+      for (var n = 0; n < count; n++){
+        if (dv.getUint32(p, true) !== 0x02014b50) break;
+        var method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+        var nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+        var name = dec.decode(buf.subarray(p + 46, p + 46 + nl));
+        if (name === 'word/document.xml'){
+          var start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), raw = buf.subarray(start, start + csize), xml;
+          if (method === 0) xml = dec.decode(raw);
+          else {
+            var ds = new DecompressionStream('deflate-raw'), wr = ds.writable.getWriter();
+            wr.write(raw); wr.close();
+            xml = await new Response(ds.readable).text();
+          }
+          var all = xml.match(/<w:pgSz[^>]*>/g);
+          if (!all) return false;
+          var tag = all[all.length - 1];                       // the last section's page setup
+          var orient = (tag.match(/w:orient="(\w+)"/) || [])[1];
+          var pw = +(tag.match(/w:w="(\d+)"/) || [])[1], ph = +(tag.match(/w:h="(\d+)"/) || [])[1];
+          if (orient) return orient === 'portrait' && !(pw && ph && pw > ph);
+          return !!(pw && ph) && ph > pw;
+        }
+        p += 46 + nl + el + cl;
+      }
+    } catch(e){}
+    return false;                                              // unknown: landscape
+  }
+  async function paginateHtml(holder, label, portrait){
     await (window.html2canvas ? Promise.resolve() : loadScript(H2C));
-    var W = 794, H = 1123, M = 64;
+    // A4 at 96 dpi: landscape 1123 x 794 (default) or portrait 794 x 1123
+    var W = portrait ? 794 : 1123, H = portrait ? 1123 : 794, M = portrait ? 64 : 56;
     var stage = document.createElement('div');
     stage.style.cssText = 'position:fixed;left:-20000px;top:0;width:' + W + 'px';
     document.body.appendChild(stage);
@@ -497,7 +532,7 @@
         }
       } else {
         if (!textLen && !imgs.length) throw new Error('the document looks empty');
-        var r2 = await paginateHtml(holder, file.name);
+        var r2 = await paginateHtml(holder, file.name, await docxIsPortrait(file));
         out = r2.pages; ratio0 = r2.ratio;
       }
       applyPages(out, ratio0, niceTitle(file.name));
