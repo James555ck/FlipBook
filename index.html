@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Leavers 2027</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 <style>
   :root{ --bg:#fff; --stage:#fff; --fg:#201f1c; --muted:#6b685f; }
@@ -101,6 +104,26 @@
     .steps{grid-template-columns:1fr}
     .stage{flex:none;height:min(78vw,460px);min-height:300px}
   }
+  /* typography: Inter, with every size and gap taken from the golden ratio (phi = 1.618) */
+  :root{ --u:13px; --phi:1.618; --h:calc(var(--u) * var(--phi)); --s:calc(var(--u) / var(--phi)); }
+  @media (max-width:480px){ :root{ --u:12px; } }
+  html,body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:var(--u);line-height:var(--phi);
+    -webkit-font-smoothing:antialiased}
+  .topbar{padding-top:calc(var(--u) + env(safe-area-inset-top,0px));padding-bottom:var(--s)}
+  .topbar h1{font-size:var(--h);line-height:1.2;font-weight:700;letter-spacing:-.015em;margin:0 0 calc(var(--s) / 2)}
+  .topbar .sub{font-size:var(--u);line-height:var(--phi);margin:0;color:#6b685f}
+  .how{padding-bottom:var(--u)}
+  .steps{gap:var(--u)}
+  .step{padding:var(--u) calc(var(--u) * var(--phi));gap:var(--s)}
+  .sn{font-size:var(--h);line-height:1.2;font-weight:700;letter-spacing:-.015em;text-transform:none;color:#9c6b2e;margin:0}
+  .st{font-size:var(--u);line-height:var(--phi);color:#33312b}
+  .step .btns{margin-top:calc(var(--s) / 2)}
+  .btn{font-family:inherit;font-size:var(--u);font-weight:600;letter-spacing:-.005em}
+  .upinfo,.stepnote{font-size:var(--u);line-height:var(--phi)}
+  .status{font-size:var(--u)}
+  .dzt{font-size:var(--h);line-height:1.2;font-weight:700}
+  .dzs{font-size:var(--u);line-height:var(--phi)}
+  .zoomctl .zv{font-size:var(--u)}
 </style>
 </head>
 <body>
@@ -113,9 +136,6 @@
   </div>
 </div>
 <section class="how" id="how">
-  <p class="intro"><b>Make your own Leavers 2027 brochure in three steps.</b> Download the Word version, add your details
-  to the back page and any images you need, save it, then upload it here. You can then download a PDF and a digital
-  flipbook to share.</p>
   <ol class="steps">
     <li class="step">
       <div class="sn">Step 1</div>
