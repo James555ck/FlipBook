@@ -14,6 +14,9 @@ details, upload it, and get a PDF and a digital flipbook they can share.
 
 Step 3 unlocks once a file has been uploaded.
 
+**No Word?** Open "Or customise it right here", type the company details, choose a logo picture and press *Update flipbook*.
+The page fills the template's placeholder lines and logo boxes itself (same result as editing the Word file).
+
 ## Files
 - `index.html` - the page: layout, styles and all the flip, upload, zoom and download logic
 - `pages.js` - the 10 template pages (base64 images) shown before anything is uploaded
@@ -49,6 +52,8 @@ or boxes placed on top of the pictures. Pictures and text you add are drawn wher
   documents are converted to simple A4 landscape pages.
 - **Zoom** (desktop): buttons, Ctrl + scroll / pinch, or `+` `-` `0`. Drag or scroll to pan while zoomed.
 - Soft per-page shadows for contrast on the white background.
+- **PDF quality:** for Word templates the PDF keeps each page's own picture exactly as stored in the Word file (no re-compression)
+  and draws the logo and text as a separate sharp layer, on true A4 pages.
 
 ## Notes
 - Uploads are processed entirely in the visitor's browser (up to 80 pages, 2200 px on the long side); nothing is sent to a server.
