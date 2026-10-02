@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Leavers Brochure Flipbook</title>
+<script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+<style>
+  :root{ --bg:#fff; --stage:#fff; --fg:#201f1c; --muted:#6b685f; }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    height:100%;margin:0;display:flex;flex-direction:column;overflow:hidden}
+  html{height:100%}
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:14px 20px;padding-top:calc(14px + env(safe-area-inset-top,0px));
+    flex:0 0 auto;
+  }
+  .topbar h1{font-size:15px;font-weight:600;letter-spacing:.02em;margin:0;color:var(--fg)}
+  .topbar .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .stage{
+    flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--stage);position:relative;padding:12px;
+  }
+  /* arrows and book share one flex row, so the arrows never overlap the book */
+  .bookwrap{flex:1 1 0;min-width:0;align-self:stretch;display:flex;align-items:center;justify-content:center;position:relative}
+  #book{
+    touch-action:pan-y;position:relative;z-index:1;
+    transition:width .45s cubic-bezier(.4,0,.2,1), height .45s cubic-bezier(.4,0,.2,1), transform .65s cubic-bezier(.45,0,.25,1);
+  }
+  #book .page{background:#fff;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.22)}
+  #book .page.blank{background:none;box-shadow:none;pointer-events:none}
+  #book .page img{width:100%;height:100%;display:block;object-fit:cover}
+  /* page-turn shadows stay inside the book instead of smearing onto the white backdrop */
+  #book .stf__block{overflow:hidden}
+  .hint{
+    position:relative;z-index:2;flex:0 0 auto;
+    width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;
+    background:rgba(0,0,0,.35);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(2px);
+  }
+  .hint:hover{background:rgba(0,0,0,.44)}
+  .hint:disabled{opacity:.25;cursor:default}
+  @media (max-width:480px){
+    .topbar h1{font-size:13px}
+    .hint{width:36px;height:36px;font-size:15px}
+  }
+  .titles{min-width:0}
+  .topbar h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .actions{display:flex;gap:8px;align-items:center}
+  .btn{flex:0 0 auto;border:1px solid rgba(0,0,0,.18);background:#fff;color:#201f1c;font:inherit;font-size:13px;
+    font-weight:600;padding:8px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:#f3f2ee}
+  .btn.primary{background:#201f1c;color:#fff;border-color:#201f1c}
+  .btn.primary:hover{background:#3a3833}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn[hidden]{display:none}
+  .status{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+    background:#fff;font-size:14px;color:var(--fg);text-align:center;padding:24px}
+  .status[hidden]{display:none}
+  .stage.drag .bookwrap{outline:2px dashed #9c6b2e;outline-offset:-8px;border-radius:12px}
+  /* contrast: a soft shadow behind each visible page. Left and right pages have their own, so a shadow
+     only appears once a page has actually landed (no empty white card while a cover is still turning) */
+  .shade{position:absolute;top:0;height:100%;pointer-events:none;border-radius:2px;opacity:0;
+    box-shadow:0 1px 3px rgba(0,0,0,.26), 0 6px 14px rgba(0,0,0,.14), 0 16px 30px rgba(0,0,0,.09)}
+  /* zoom (desktop only) */
+  #zoomer{position:relative;transform-origin:50% 50%;will-change:transform}
+  .bookwrap.zoomed{cursor:grab;overflow:hidden}
+  .bookwrap.panning{cursor:grabbing}
+  .zoomctl{position:absolute;right:16px;bottom:14px;z-index:6;display:none;align-items:center;gap:2px;
+    background:#fff;border:1px solid rgba(0,0,0,.18);border-radius:999px;padding:3px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+  .zoomctl button{border:none;background:none;font:inherit;font-size:16px;line-height:1;width:30px;height:30px;border-radius:50%;
+    cursor:pointer;color:#201f1c;display:flex;align-items:center;justify-content:center}
+  .zoomctl button:hover:not(:disabled){background:#f0efea}
+  .zoomctl button:disabled{opacity:.3;cursor:default}
+  .zoomctl .zv{min-width:46px;text-align:center;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:#201f1c}
+  @media (hover:hover) and (pointer:fine) and (min-width:700px){ .zoomctl{display:flex} }
+</style>
+</head>
+<body>
+
+
+<div class="topbar">
+  <div class="titles">
+    <h1 id="title">Leavers Brochure 2026</h1>
+    <div class="sub">Drag a corner, scroll, click the arrows, or use the keyboard</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="dlBtn" type="button" hidden>Download</button>
+    <button class="btn primary" id="upBtn" type="button" title="Choose a PDF, or several page images (JPG / PNG)">Upload</button>
+  </div>
+</div>
+<input type="file" id="fileInput" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+
+<div class="stage">
+  <button class="hint prev" id="prevBtn" aria-label="Previous page">&#8249;</button>
+  <div class="bookwrap" id="bookwrap"><div id="zoomer"><div class="shade" id="shadeL"></div><div class="shade" id="shadeR"></div><div id="book"></div></div><div class="status" id="status" hidden></div></div>
+  <button class="hint next" id="nextBtn" aria-label="Next page">&#8250;</button>
+  <div class="zoomctl" id="zoomCtl" role="group" aria-label="Zoom">
+    <button id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out (-)">&#8722;</button>
+    <span class="zv" id="zoomVal">100%</span>
+    <button id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in (+ or Ctrl + scroll)">+</button>
+    <button id="zoomFit" type="button" aria-label="Reset zoom" title="Reset zoom (0)">&#10530;</button>
+  </div>
+</div>
+
+<script src="pages.js"></script>
+<script>
+(function(){
+  var stageEl = document.querySelector('.stage');
+  var wrapEl = document.getElementById('bookwrap');
+  var bookEl = document.getElementById('book');   // re-created on every build(): the library's destroy() removes its element
+  var prevBtn = document.getElementById('prevBtn');
+  var nextBtn = document.getElementById('nextBtn');
+  var FLIP_MS = 480; // one constant speed for every turn
+  var ratio = 1.4142; // A4 landscape until a file says otherwise
+  var DEFAULT_PAGES = PAGES, pages = PAGES, docTitle = 'Leavers Brochure 2026';
+  if (window.PRELOADED && window.PRELOADED.pages){ pages = window.PRELOADED.pages; ratio = window.PRELOADED.ratio || ratio; docTitle = window.PRELOADED.title || docTitle; }
+  var zoomerEl = document.getElementById('zoomer'), shadeL = document.getElementById('shadeL'), shadeR = document.getElementById('shadeR');
+  var zoom = 1, panX = 0, panY = 0, ZMIN = 1, ZMAX = 4;
+  var viewOnly = !!window.VIEW_ONLY;   // downloaded copies are for viewing: no upload
+  var titleEl = document.getElementById('title'), statusEl = document.getElementById('status');
+  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn');
+  var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/', MAX_SIDE = 2200, MAX_PAGES = 80;
+  var pageFlip = null, spreadMode = true, total = 0, hasBlanks = false, endAlone = false;
+  var curIdx = 0, busy = false, queued = 0, queuedDir = 0, busyTimer, builtW = 0, builtH = 0;
+
+  function wantsSpread(){ return wrapEl.clientWidth >= 560; }
+
+  // Fit a page into the stage: half the width in spread mode, full width on phones.
+  function sizeFor(){
+    var maxW = wrapEl.clientWidth, maxH = wrapEl.clientHeight;
+    var w = maxW / (wantsSpread() ? 2 : 1), h = w / ratio;
+    if (h > maxH){ h = maxH; w = h * ratio; }
+    return { w: Math.max(200, Math.floor(w)), h: Math.max(140, Math.floor(h)) };
+  }
+
+  function leaf(cls, src){
+    var div = document.createElement('div');
+    div.className = 'page' + (cls ? ' ' + cls : '');
+    div.setAttribute('data-density', 'soft'); // every leaf, covers included, turns the same way
+    if (src){
+      var img = document.createElement('img');
+      img.decoding = 'sync'; img.src = src; img.draggable = false;
+      if (img.decode) img.decode().catch(function(){});   // pre-decode so a page never pops in blank
+      div.appendChild(img);
+    }
+    bookEl.appendChild(div);
+  }
+
+  // The library forces first/last pages "hard" when showCover is on, so covers
+  // are instead paired with invisible blank leaves. They then turn exactly like
+  // any other page, and the book slides to keep a lone cover centred.
+  function build(keepReal){
+    clearTimeout(busyTimer);
+    if (pageFlip){ try { pageFlip.destroy(); } catch(e){} pageFlip = null; }
+    if (bookEl && bookEl.parentNode) bookEl.parentNode.removeChild(bookEl);
+    bookEl = document.createElement('div');
+    bookEl.id = 'book';
+    zoomerEl.appendChild(bookEl);
+    setZoom(1, 0, 0, false);   // a rebuilt book always starts un-zoomed
+    busy = false; queued = 0; queuedDir = 0; curIdx = 0;
+    titleEl.textContent = docTitle; document.title = docTitle;
+    spreadMode = wantsSpread();
+    hasBlanks = spreadMode;
+    endAlone = hasBlanks && (pages.length % 2 === 0);   // even count: back cover sits alone
+    if (hasBlanks) leaf('blank');
+    pages.forEach(function(src){ leaf('', src); });
+    if (endAlone) leaf('blank');
+    total = pages.length + (hasBlanks ? 1 : 0) + (endAlone ? 1 : 0);
+
+    builtW = wrapEl.clientWidth; builtH = wrapEl.clientHeight;
+    var size = sizeFor();
+    // the zoom wrapper needs an explicit size: the flip library measures its parent when it starts
+    zoomerEl.style.width = size.w * (spreadMode ? 2 : 1) + 'px';
+    zoomerEl.style.height = size.h + 'px';
+    pageFlip = new St.PageFlip(bookEl, {
+      width: size.w, height: size.h, size: 'fixed',
+      minWidth: 200, maxWidth: 1400, minHeight: 140, maxHeight: 1400,
+      showCover: false, usePortrait: true,
+      maxShadowOpacity: 0.3, mobileScrollSupport: false,
+      useMouseEvents: true, flippingTime: FLIP_MS,
+    });
+    pageFlip.loadFromHTML(document.querySelectorAll('#book .page'));
+    pageFlip.on('flip', function(e){ if (!busy){ curIdx = e.data; sync(e.data); } });
+    var startLeaf = 0;
+    if (keepReal > 0){            // keep the reader on the same page after a rebuild
+      startLeaf = keepReal + (hasBlanks ? 1 : 0);
+      if (hasBlanks && startLeaf % 2) startLeaf -= 1;
+      startLeaf = Math.min(startLeaf, lastIdx());
+      try { pageFlip.turnToPage(startLeaf); } catch(e){ startLeaf = 0; }
+      curIdx = startLeaf;
+    }
+    shadowSeen = { L: false, R: false };
+    bookEl.style.transition = 'none';
+    sync(startLeaf);
+    placeShadows(startLeaf, true);
+    void bookEl.offsetWidth;
+    bookEl.style.transition = '';
+  }
+
+  function lastIdx(){ return hasBlanks ? (total % 2 ? total - 1 : total - 2) : total - 1; }
+  function shiftFor(idx){
+    if (!hasBlanks) return 0;
+    var w = pageFlip.getSettings().width;
+    if (idx <= 0) return -w / 2;                          // front cover sits on the right half
+    if (endAlone && idx >= lastIdx()) return w / 2;       // back cover sits on the left half
+    return 0;
+  }
+  // Shadows: left page, right page. A shadow slides with its page, fades out at once when its page goes
+  // away, and fades in only after the turn has finished when its page arrives.
+  var shadowSeen = { L: false, R: false }, shadowMs = FLIP_MS;
+  function placeShadows(idx, instant){
+    var zw = zoomerEl.offsetWidth, pw = hasBlanks ? zw / 2 : zw, st;
+    if (!hasBlanks) st = { R: [0, 1], L: [0, 0] };
+    else if (idx <= 0) st = { R: [pw / 2, 1], L: [0, 0] };                       // lone front cover
+    else if (endAlone && idx >= lastIdx()) st = { R: [pw, 0], L: [pw / 2, 1] };  // lone back cover
+    else st = { R: [pw, 1], L: [0, 1] };                                         // spread
+    [['L', shadeL], ['R', shadeR]].forEach(function(p){
+      var key = p[0], el = p[1], x = st[key][0], on = st[key][1];
+      var appearing = on && !shadowSeen[key];
+      el.style.width = pw + 'px';
+      if (instant){ el.style.transition = 'none'; }
+      else {
+        var slide = 'left ' + shadowMs + 'ms cubic-bezier(.45,0,.25,1)';
+        el.style.transition = slide + ', opacity ' + (appearing ? '.22s ease ' + shadowMs + 'ms' : '.12s ease 0s');
+      }
+      el.style.left = x + 'px'; el.style.opacity = on ? '1' : '0';
+      shadowSeen[key] = !!on;
+    });
+  }
+
+  function sync(idx){
+    bookEl.style.transform = 'translateX(' + shiftFor(idx) + 'px)';
+    placeShadows(idx);
+    prevBtn.disabled = idx <= 0;
+    nextBtn.disabled = idx >= lastIdx();
+  }
+
+  // Turns are queued: if you keep scrolling while a page is turning, the next
+  // turn starts the instant the current one lands, so scrolling feels continuous.
+  function setSpeed(ms){
+    pageFlip.getSettings().flippingTime = ms;
+    bookEl.style.transitionDuration = '.45s,.45s,' + ms + 'ms';
+    shadowMs = ms;
+  }
+  function finish(){
+    if (!pageFlip) return;
+    if (pageFlip.getState() !== 'read'){ busyTimer = setTimeout(finish, 16); return; }
+    curIdx = pageFlip.getCurrentPageIndex();
+    sync(curIdx);
+    busy = false;
+    if (queued > 0){
+      var d = queuedDir; queued--;
+      if (!queued) queuedDir = 0;
+      go(d);
+    }
+  }
+  function go(dir){
+    if (!pageFlip) return;
+    if (busy){
+      if (queuedDir && queuedDir !== dir){ queued = 0; }   // reversing: drop the backlog
+      queuedDir = dir;
+      queued = Math.min(queued + 1, 2);
+      return;
+    }
+    var step = hasBlanks ? 2 : 1;
+    var t = Math.max(0, Math.min(lastIdx(), curIdx + dir * step));
+    if (t === curIdx){ queued = 0; return; }
+    setSpeed(FLIP_MS);
+    busy = true;
+    busyTimer = setTimeout(finish, FLIP_MS * 0.8);
+    sync(t); // slide starts together with the page turn
+    if (dir > 0) pageFlip.flipNext(); else pageFlip.flipPrev();
+  }
+
+  // ---- upload: PDF or page images -> pages -------------------------------
+  function say(msg){ statusEl.hidden = !msg; statusEl.textContent = msg || ''; }
+  function flash(msg, ms){ say(msg); setTimeout(function(){ say(''); }, ms || 3000); }
+  function loadScript(src){
+    return new Promise(function(res, rej){
+      var el = document.createElement('script');
+      el.src = src; el.onload = res; el.onerror = function(){ rej(new Error('Could not load the PDF reader - check your connection')); };
+      document.head.appendChild(el);
+    });
+  }
+  async function getPdfjs(){
+    if (!window.pdfjsLib){
+      await loadScript(PDFJS + 'pdf.min.js');
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+    }
+    return window.pdfjsLib;
+  }
+  function niceTitle(name){
+    return String(name || '').replace(/\.[^.\/\\]+$/, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function applyPages(list, r, title){
+    pages = list; ratio = r || 1.4142; docTitle = title || 'Flipbook';
+    say('');
+    build();
+  }
+  // PDFium (the engine inside Chrome) draws every PDF the way Chrome does, including gradients that
+  // pdf.js cannot. It ships with its WebAssembly bundled in the script, so no fetch is needed.
+  var PDFIUM = 'https://cdn.jsdelivr.net/npm/@hyzyla/pdfium@2.1.13/dist/index.esm.base64.js';
+  async function renderWithPdfium(file){
+    say('Loading the PDF engine (first time only)…');
+    var mod = await import(PDFIUM);
+    var lib = await mod.PDFiumLibrary.init({ disableBase64Warning: true });
+    try {
+      var doc = await lib.loadDocument(new Uint8Array(await file.arrayBuffer()));
+      var count = Math.min(doc.getPageCount(), MAX_PAGES), out = [], r = null;
+      for (var i = 0; i < count; i++){
+        say('Preparing page ' + (i + 1) + ' of ' + count + (doc.getPageCount() > count ? ' (first ' + MAX_PAGES + ' pages)' : '') + '…');
+        var page = doc.getPage(i), size = page.getOriginalSize();
+        if (r === null) r = size.originalWidth / size.originalHeight;
+        var img = await page.render({ scale: MAX_SIDE / Math.max(size.originalWidth, size.originalHeight), render: 'bitmap' });
+        var px = img.data, rgba = new Uint8ClampedArray(px.length);
+        for (var j = 0; j < px.length; j += 4){ rgba[j] = px[j]; rgba[j + 1] = px[j + 1]; rgba[j + 2] = px[j + 2]; rgba[j + 3] = 255; }
+        var cv = document.createElement('canvas');
+        cv.width = img.width; cv.height = img.height;
+        cv.getContext('2d').putImageData(new ImageData(rgba, img.width, img.height), 0, 0);
+        out.push(cv.toDataURL('image/jpeg', 0.88));
+        cv.width = cv.height = 0;
+        await new Promise(function(res){ setTimeout(res, 0); });   // let the status text repaint
+      }
+      doc.destroy();
+      return { pages: out, ratio: r };
+    } finally { try { lib.destroy(); } catch(e){} }
+  }
+
+  var converting = false;
+  async function loadPdf(file){
+    if (converting) return;
+    converting = true;
+    try {
+      try {
+        var res = await renderWithPdfium(file);
+        applyPages(res.pages, res.ratio, niceTitle(file.name));
+        return;
+      } catch(e){ /* engine unavailable or file unreadable: fall back to pdf.js below */ }
+      say('Opening ' + file.name + '…');
+      var lib = await getPdfjs();
+      var pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+      var n = Math.min(pdf.numPages, MAX_PAGES), out = [], r = null;
+      for (var p = 1; p <= n; p++){
+        say('Preparing page ' + p + ' of ' + n + (pdf.numPages > n ? ' (first ' + MAX_PAGES + ' pages)' : '') + '…');
+        var page = await pdf.getPage(p);
+        var v1 = page.getViewport({ scale: 1 });
+        if (r === null) r = v1.width / v1.height;
+        var vp = page.getViewport({ scale: MAX_SIDE / Math.max(v1.width, v1.height) });
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        out.push(cv.toDataURL('image/jpeg', 0.85));
+        cv.width = cv.height = 0;
+        page.cleanup();
+      }
+      applyPages(out, r, niceTitle(file.name));
+    } catch(e){
+      flash('Sorry, that PDF couldn’t be read' + (e && e.message ? ' (' + e.message + ')' : '') + '.', 4500);
+    } finally { converting = false; }
+  }
+  function natural(a, b){ return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }); }
+  function fileToImage(file){
+    return new Promise(function(res, rej){
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function(){ res({ im: im, url: url }); };
+      im.onerror = function(){ URL.revokeObjectURL(url); rej(new Error(file.name + ' is not a readable image')); };
+      im.src = url;
+    });
+  }
+  async function loadImages(files){
+    if (converting) return;
+    converting = true;
+    try {
+      files = files.slice().sort(natural).slice(0, MAX_PAGES);
+      var out = [], r = null;
+      for (var i = 0; i < files.length; i++){
+        say('Preparing page ' + (i + 1) + ' of ' + files.length + '…');
+        var loaded = await fileToImage(files[i]), im = loaded.im;
+        if (r === null) r = im.naturalWidth / im.naturalHeight;
+        var k = Math.min(1, MAX_SIDE / Math.max(im.naturalWidth, im.naturalHeight));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.drawImage(im, 0, 0, cv.width, cv.height);
+        out.push(cv.toDataURL('image/jpeg', 0.88));
+        cv.width = cv.height = 0;
+        URL.revokeObjectURL(loaded.url);
+      }
+      var t = niceTitle(files[0].name.replace(/[\s_-]*(page)?[\s_-]*\d+(\.[^.]+)$/i, '$2'));
+      applyPages(out, r, t || 'Flipbook');
+    } catch(e){
+      flash('Sorry, those images couldn’t be read (' + (e && e.message ? e.message : 'unknown error') + ').', 4500);
+    } finally { converting = false; }
+  }
+  // a PDF if there is one, otherwise the images (ordered by file name)
+  function loadFiles(list){
+    var files = Array.prototype.slice.call(list || []);
+    var pdf = files.filter(function(f){ return f.type === 'application/pdf' || /\.pdf$/i.test(f.name); })[0];
+    if (pdf) return loadPdf(pdf);
+    var imgs = files.filter(function(f){ return /^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name); });
+    if (imgs.length) return loadImages(imgs);
+    flash('Please choose a PDF or JPG / PNG images.', 2800);
+  }
+
+  // ---- download a self-contained copy ------------------------------------
+  async function setupDownload(){
+    var dl = null;
+    try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch(e){}
+    if (!dl) return;
+    dlBtn.hidden = false;
+    dlBtn.addEventListener('click', async function(){
+      dlBtn.disabled = true; var label = dlBtn.textContent; dlBtn.textContent = 'Preparing…';
+      try {
+        var src = await (await fetch('index.html', { cache: 'no-store' })).text();
+        // swap the CDN page-flip tag for the library itself so the saved file also works offline
+        try {
+          var libTag = src.match(/<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/page-flip[^"]*"><\/script>/);
+          if (libTag){
+            var libJs = await (await fetch(libTag[0].match(/src="([^"]+)"/)[1])).text();
+            src = src.replace(libTag[0], function(){ return '<script>' + libJs + '<\/script>'; });
+          }
+        } catch(e){ /* keep the CDN link */ }
+        var inject = '<script>window.VIEW_ONLY=true;<\/script>';
+        if (pages !== DEFAULT_PAGES){
+          // uploaded pages: drop the built-in brochure images and embed the current pages instead
+          var a = src.indexOf('<script>const PAGES'), z = a < 0 ? -1 : src.indexOf('<\/script>', a);
+          if (a >= 0 && z > a) src = src.slice(0, a) + '<script>const PAGES=[];<\/script>' + src.slice(z + 9);
+          var data = JSON.stringify({ pages: pages, ratio: ratio, title: docTitle }).replace(/</g, '\\u003c');
+          inject += '<script>window.PRELOADED=' + data + ';<\/script>';
+        }
+        var at = src.indexOf('<div class="topbar">');
+        if (at < 0) throw new Error('template');
+        src = src.slice(0, at) + inject + src.slice(at);
+        var name = (docTitle || 'Flipbook').replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Flipbook';
+        await dl.save({ filename: name + '.html', data: new Blob([src], { type: 'text/html' }) });
+      } catch(e){ /* declined or unavailable */ }
+      dlBtn.textContent = label; dlBtn.disabled = false;
+    });
+  }
+
+  // ---- zoom (desktop) ------------------------------------------------------
+  // The book is scaled with CSS inside #zoomer. While zoomed, mouse drags pan the page instead of
+  // flipping it (the flip library cannot read scaled mouse positions), and plain scroll pans.
+  function clampPan(){
+    var ww = wrapEl.clientWidth, wh = wrapEl.clientHeight;
+    var bw = zoomerEl.offsetWidth * zoom, bh = zoomerEl.offsetHeight * zoom;
+    var mx = Math.max(0, (bw - ww) / 2) + 60, my = Math.max(0, (bh - wh) / 2) + 60;
+    panX = Math.max(-mx, Math.min(mx, panX));
+    panY = Math.max(-my, Math.min(my, panY));
+  }
+  function setZoom(z, px, py, animate){
+    zoom = Math.max(ZMIN, Math.min(ZMAX, z));
+    if (zoom === 1){ panX = 0; panY = 0; } else { panX = px; panY = py; clampPan(); }
+    zoomerEl.style.transition = animate ? 'transform .18s ease-out' : 'none';
+    zoomerEl.style.transform = zoom === 1 ? '' : 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+    wrapEl.classList.toggle('zoomed', zoom > 1);
+    var zv = document.getElementById('zoomVal'); if (zv) zv.textContent = Math.round(zoom * 100) + '%';
+    var zi = document.getElementById('zoomIn'), zo = document.getElementById('zoomOut'), zf = document.getElementById('zoomFit');
+    if (zi) zi.disabled = zoom >= ZMAX; if (zo) zo.disabled = zoom <= ZMIN; if (zf) zf.disabled = zoom === 1;
+  }
+  // zoom keeping the point under (cx, cy) fixed on screen (cx, cy default to the middle of the book area)
+  function zoomAt(z2, cx, cy, animate){
+    z2 = Math.max(ZMIN, Math.min(ZMAX, z2));
+    var r = wrapEl.getBoundingClientRect(), mx = r.left + r.width / 2, my = r.top + r.height / 2;
+    if (cx == null){ cx = mx; cy = my; }
+    var ux = (cx - mx - panX) / zoom, uy = (cy - my - panY) / zoom;
+    setZoom(z2, cx - mx - z2 * ux, cy - my - z2 * uy, animate);
+  }
+  function setupZoom(){
+    document.getElementById('zoomIn').addEventListener('click', function(){ zoomAt(zoom * 1.5, null, null, true); });
+    document.getElementById('zoomOut').addEventListener('click', function(){ zoomAt(zoom / 1.5, null, null, true); });
+    document.getElementById('zoomFit').addEventListener('click', function(){ setZoom(1, 0, 0, true); });
+    document.addEventListener('keydown', function(e){
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === '+' || e.key === '=') zoomAt(zoom * 1.5, null, null, true);
+      else if (e.key === '-' || e.key === '_') zoomAt(zoom / 1.5, null, null, true);
+      else if (e.key === '0') setZoom(1, 0, 0, true);
+    });
+    // drag to pan while zoomed (captured first so the flip library never sees these drags)
+    var drag = null;
+    function block(e){ e.stopPropagation(); }
+    ['mousedown', 'touchstart'].forEach(function(t){
+      wrapEl.addEventListener(t, function(e){
+        if (zoom <= 1) return;
+        block(e);
+        if (t === 'mousedown' && e.button === 0){
+          e.preventDefault();
+          drag = { x: e.clientX, y: e.clientY, px: panX, py: panY };
+          wrapEl.classList.add('panning');
+        }
+      }, true);
+    });
+    ['mouseup', 'touchend', 'mousemove', 'touchmove'].forEach(function(t){
+      wrapEl.addEventListener(t, function(e){ if (zoom > 1) block(e); }, true);
+    });
+    window.addEventListener('mousemove', function(e){
+      if (!drag) return;
+      panX = drag.px + (e.clientX - drag.x); panY = drag.py + (e.clientY - drag.y);
+      setZoom(zoom, panX, panY, false);
+    });
+    window.addEventListener('mouseup', function(){ drag = null; wrapEl.classList.remove('panning'); });
+  }
+
+  function start(){
+    build();
+    setupZoom();
+    if (viewOnly){
+      document.getElementById('upBtn').hidden = true;
+      // a stray file drop must not navigate away from the flipbook
+      ['dragover', 'drop'].forEach(function(t){ document.addEventListener(t, function(e){ e.preventDefault(); }); });
+    } else {
+      var pick = function(){ fileInput.value = ''; fileInput.click(); };
+      document.getElementById('upBtn').addEventListener('click', pick);
+      fileInput.addEventListener('change', function(){ if (fileInput.files.length) loadFiles(fileInput.files); });
+      ['dragenter', 'dragover'].forEach(function(t){ document.addEventListener(t, function(e){ e.preventDefault(); stageEl.classList.add('drag'); }); });
+      ['dragleave', 'drop'].forEach(function(t){ document.addEventListener(t, function(e){ e.preventDefault(); stageEl.classList.remove('drag'); }); });
+      document.addEventListener('drop', function(e){ var fl = e.dataTransfer && e.dataTransfer.files; if (fl && fl.length) loadFiles(fl); });
+    }
+    setupDownload();
+    prevBtn.addEventListener('click', function(){ go(-1); });
+    nextBtn.addEventListener('click', function(){ go(1); });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'ArrowRight') go(1);
+      if (e.key === 'ArrowLeft') go(-1);
+    });
+    // Scroll (wheel / trackpad) turns pages; one turn per gesture burst.
+    var acc = 0, accReset;
+    stageEl.addEventListener('wheel', function(e){
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey){                    // Ctrl/Cmd + scroll, or trackpad pinch: zoom at the cursor
+        zoomAt(zoom * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY, false);
+        return;
+      }
+      if (zoom > 1){                                  // zoomed in: scrolling moves around the page
+        setZoom(zoom, panX - e.deltaX, panY - e.deltaY, false);
+        return;
+      }
+      acc += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      clearTimeout(accReset);
+      accReset = setTimeout(function(){ acc = 0; }, 120);
+      if (Math.abs(acc) >= 50){ var d = acc > 0 ? 1 : -1; acc = 0; go(d); }
+    }, { passive: false });
+
+    // The library cannot resize itself, so a change to the available space rebuilds the
+    // book on the same page (the frame is often resized just after load).
+    var resizeTimer;
+    function onSize(){
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function(){
+        if (!pageFlip) return;
+        if (Math.abs(wrapEl.clientWidth - builtW) < 3 && Math.abs(wrapEl.clientHeight - builtH) < 3) return;
+        build(Math.max(0, curIdx - (hasBlanks ? 1 : 0)));
+      }, 120);
+    }
+    window.addEventListener('resize', onSize);
+    if (window.ResizeObserver) new ResizeObserver(onSize).observe(wrapEl);
+  }
+
+  if (window.St && window.St.PageFlip) start();
+  else window.addEventListener('load', start);
+})();
+</script>
+
+</body>
+</html>
