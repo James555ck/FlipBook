@@ -126,7 +126,9 @@
   .dzs{font-size:var(--u);line-height:var(--phi)}
   .zoomctl .zv{font-size:var(--u)}
   /* square corners everywhere, and no red / rust accents: neutral ink instead */
-  .step,.btn,.hint,.zoomctl,.zoomctl button,.dropzone .dz,.stage.drag .bookwrap,.shade,.stepnote{border-radius:0}
+  .step,.dropzone .dz,.stage.drag .bookwrap,.shade,.stepnote{border-radius:0}
+  .btn,.zoomctl{border-radius:999px}
+  .hint,.zoomctl button{border-radius:50%}
   .sn{color:#201f1c}
   .dropzone .dz{border-color:#201f1c}
   .stage.drag .bookwrap{outline-color:#201f1c}
@@ -180,7 +182,6 @@
 </div>
 
 <script src="pages.js"></script>
-<script src="template.js"></script>
 <script>
 (function(){
   var stageEl = document.querySelector('.stage');
@@ -977,7 +978,7 @@
   // ---- the three steps ------------------------------------------------------
   function refreshSteps(){
     var ok = !!saver;
-    tplBtn.disabled = !ok || typeof TEMPLATE_DOCX === 'undefined';
+    tplBtn.disabled = !ok;
     designsBtn.disabled = !ok;            // the design files do not depend on the upload
     designsBtn.title = ok ? '' : 'Downloads are not available in this view';
     pdfBtn.disabled = !(ok && uploaded);
@@ -1012,12 +1013,20 @@
   }
   function setupTemplate(){
     tplBtn.addEventListener('click', async function(){
-      if (!saver || typeof TEMPLATE_DOCX === 'undefined') return;
+      if (!saver) return;
       tplBtn.disabled = true; var label = tplBtn.textContent; tplBtn.textContent = 'Preparing…';
       try {
-        var bin = atob(TEMPLATE_DOCX), bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        await saver.save({ filename: 'Leavers 2027.docx', data: new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }) });
+        var DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', blob;
+        if (typeof TEMPLATE_DOCX !== 'undefined'){
+          var bin = atob(TEMPLATE_DOCX), bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          blob = new Blob([bytes], { type: DOCX });
+        } else {
+          var r = await fetch('Leavers-2027.docx');
+          if (!r.ok) throw new Error('template file missing');
+          blob = new Blob([await r.arrayBuffer()], { type: DOCX });
+        }
+        await saver.save({ filename: 'Leavers 2027.docx', data: blob });
       } catch(e){ /* declined or unavailable */ }
       tplBtn.textContent = label; tplBtn.disabled = false;
     });
