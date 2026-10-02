@@ -26,8 +26,10 @@ then visit http://localhost:8080
 ## Features
 - Front and back covers sit centred, then slide to a two-page spread as they open (single page on phones).
 - Every page turns the same way at one constant speed. Turn with drag, scroll, the arrows or the left/right keys.
-- **Upload**: a PDF (rendered with PDFium, so gradients match Chrome) or several JPG / PNG page images
-  (ordered by file name). The page title comes from the file name.
+- **Upload / drag and drop**: drop files anywhere on the page, or use the Upload button. Accepts a PDF (rendered with
+  PDFium, so gradients match Chrome), a Word `.docx`, or several JPG / PNG page images (ordered by file name).
+  The page title comes from the file name. A Word file made of page pictures keeps its pages exactly; an ordinary
+  text document is converted to simple A4 pages (Word's exact layout is not reproduced, so a PDF is best for designed documents).
 - **Zoom** (desktop): buttons, Ctrl + scroll / pinch, or `+` `-` `0`. Drag or scroll to pan while zoomed.
 - **Download PDF**: one PDF page per flipbook page, named after the title.
 - **Download Flipbook**: a single self-contained, view-only `.html` file (no upload), named after the title.

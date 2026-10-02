@@ -59,6 +59,13 @@
   .status{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
     background:#fff;font-size:14px;color:var(--fg);text-align:center;padding:24px}
   .status[hidden]{display:none}
+  .dropzone{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.88);backdrop-filter:blur(3px)}
+  .dropzone[hidden]{display:none}
+  .dropzone .dz{border:3px dashed #9c6b2e;border-radius:22px;padding:44px 56px;text-align:center;background:#fff;
+    box-shadow:0 10px 40px rgba(0,0,0,.12);max-width:min(560px,86vw)}
+  .dzt{font-size:22px;font-weight:700;color:#201f1c}
+  .dzs{margin-top:8px;font-size:14px;color:#6b685f}
   .stage.drag .bookwrap{outline:2px dashed #9c6b2e;outline-offset:-8px;border-radius:12px}
   /* contrast: a soft shadow behind each visible page. Left and right pages have their own, so a shadow
      only appears once a page has actually landed (no empty white card while a cover is still turning) */
@@ -89,14 +96,15 @@
   <div class="actions">
     <button class="btn" id="pdfBtn" type="button" hidden>Download PDF</button>
     <button class="btn" id="dlBtn" type="button" hidden>Download Flipbook</button>
-    <button class="btn primary" id="upBtn" type="button" title="Choose a PDF, or several page images (JPG / PNG)">Upload</button>
+    <button class="btn primary" id="upBtn" type="button" title="Choose a PDF, a Word document (.docx) or page images (JPG / PNG)">Upload</button>
   </div>
 </div>
-<input type="file" id="fileInput" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+<input type="file" id="fileInput" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
 
 <div class="stage">
   <button class="hint prev" id="prevBtn" aria-label="Previous page">&#8249;</button>
   <div class="bookwrap" id="bookwrap"><div id="zoomer"><div class="shade" id="shadeL"></div><div class="shade" id="shadeR"></div><div id="book"></div></div><div class="status" id="status" hidden></div></div>
+<div class="dropzone" id="dropzone" hidden><div class="dz"><div class="dzt">Drop to build your flipbook</div><div class="dzs">PDF, Word (.docx) or page images (JPG / PNG)</div></div></div>
   <button class="hint next" id="nextBtn" aria-label="Next page">&#8250;</button>
   <div class="zoomctl" id="zoomCtl" role="group" aria-label="Zoom">
     <button id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out (-)">&#8722;</button>
@@ -282,7 +290,7 @@
   function loadScript(src){
     return new Promise(function(res, rej){
       var el = document.createElement('script');
-      el.src = src; el.onload = res; el.onerror = function(){ rej(new Error('Could not load the PDF reader - check your connection')); };
+      el.src = src; el.onload = res; el.onerror = function(){ rej(new Error('Could not load a helper library - check your connection')); };
       document.head.appendChild(el);
     });
   }
@@ -399,14 +407,116 @@
       flash('Sorry, those images couldn’t be read (' + (e && e.message ? e.message : 'unknown error') + ').', 4500);
     } finally { converting = false; }
   }
-  // a PDF if there is one, otherwise the images (ordered by file name)
+  // ---- Word (.docx) -> pages ------------------------------------------------
+  // Browsers cannot lay out Word files exactly. Two cases are handled:
+  //  - a Word file that is mostly pictures (e.g. a brochure with one image per page): the pictures become the pages
+  //  - an ordinary text document: converted to simple HTML (headings, paragraphs, lists, tables, images) and paginated A4
+  var MAMMOTH = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+  var H2C = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  function srcToJpeg(src){
+    return new Promise(function(res, rej){
+      var im = new Image();
+      im.onload = function(){
+        var k = Math.min(1, MAX_SIDE / Math.max(im.naturalWidth, im.naturalHeight));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+        var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.drawImage(im, 0, 0, cv.width, cv.height);
+        var out = { data: cv.toDataURL('image/jpeg', 0.88), ratio: cv.width / cv.height };
+        cv.width = cv.height = 0; res(out);
+      };
+      im.onerror = function(){ rej(new Error('a picture in the document could not be read')); };
+      im.src = src;
+    });
+  }
+  async function paginateHtml(holder, label){
+    await (window.html2canvas ? Promise.resolve() : loadScript(H2C));
+    var W = 794, H = 1123, M = 64;
+    var stage = document.createElement('div');
+    stage.style.cssText = 'position:fixed;left:-20000px;top:0;width:' + W + 'px';
+    document.body.appendChild(stage);
+    var css = document.createElement('style');
+    css.textContent = '.fbp{width:' + W + 'px;height:' + H + 'px;padding:' + M + 'px;box-sizing:border-box;background:#fff;color:#1d1d1b;overflow:hidden;' +
+      'font:16px/1.55 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;position:relative}' +
+      '.fbp .in{width:100%}.fbp h1{font-size:30px;line-height:1.2;margin:0 0 14px}.fbp h2{font-size:23px;line-height:1.25;margin:18px 0 10px}' +
+      '.fbp h3{font-size:19px;margin:16px 0 8px}.fbp p{margin:0 0 11px}.fbp ul,.fbp ol{margin:0 0 11px;padding-left:26px}' +
+      '.fbp table{border-collapse:collapse;width:100%;margin:0 0 12px;font-size:14px}.fbp td,.fbp th{border:1px solid #bbb;padding:5px 8px;vertical-align:top}' +
+      '.fbp img{max-width:100%;max-height:' + (H - 2 * M - 10) + 'px;height:auto;display:block;margin:6px 0}';
+    stage.appendChild(css);
+    var pagesEls = [];
+    function newPage(){
+      var pg = document.createElement('div'); pg.className = 'fbp';
+      var inn = document.createElement('div'); inn.className = 'in'; pg.appendChild(inn);
+      stage.appendChild(pg); pagesEls.push({ pg: pg, inn: inn }); return pagesEls[pagesEls.length - 1];
+    }
+    var cur = newPage(), limit = H - 2 * M;
+    Array.prototype.slice.call(holder.childNodes).forEach(function(node){
+      cur.inn.appendChild(node);
+      if (cur.inn.offsetHeight > limit && cur.inn.childNodes.length > 1){
+        var carry = [node], prev = node.previousSibling;
+        // keep a heading together with the text that follows it
+        if (prev && /^H[1-6]$/.test(prev.nodeName) && cur.inn.childNodes.length > 2) carry.unshift(prev);
+        carry.forEach(function(n){ cur.inn.removeChild(n); });
+        cur = newPage();
+        carry.forEach(function(n){ cur.inn.appendChild(n); });
+      }
+    });
+    // images may load after layout: wait, then re-check the overflow once
+    await Promise.all(Array.prototype.slice.call(stage.querySelectorAll('img')).map(function(im){
+      return im.complete ? 0 : new Promise(function(r){ im.onload = im.onerror = r; });
+    }));
+    var out = [];
+    for (var i = 0; i < pagesEls.length && i < MAX_PAGES; i++){
+      say('Preparing page ' + (i + 1) + ' of ' + pagesEls.length + '…');
+      var cv = await window.html2canvas(pagesEls[i].pg, { scale: 2, backgroundColor: '#fff', useCORS: true, logging: false });
+      out.push(cv.toDataURL('image/jpeg', 0.9));
+      cv.width = cv.height = 0;
+      await new Promise(function(r){ setTimeout(r, 0); });
+    }
+    document.body.removeChild(stage);
+    return { pages: out, ratio: W / H };
+  }
+  async function loadDocx(file){
+    if (converting) return;
+    converting = true;
+    try {
+      say('Reading ' + file.name + '…');
+      await (window.mammoth ? Promise.resolve() : loadScript(MAMMOTH));
+      var res = await window.mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+      var holder = document.createElement('div'); holder.innerHTML = res.value;
+      var imgs = Array.prototype.slice.call(holder.querySelectorAll('img'));
+      var textLen = holder.textContent.replace(/\s+/g, '').length;
+      var out = [], ratio0 = null;
+      if (imgs.length && textLen < 250 * imgs.length){
+        // a document that is really a stack of page pictures
+        for (var i = 0; i < imgs.length && i < MAX_PAGES; i++){
+          say('Preparing page ' + (i + 1) + ' of ' + imgs.length + '…');
+          var j = await srcToJpeg(imgs[i].src);
+          if (ratio0 === null) ratio0 = j.ratio;
+          out.push(j.data);
+        }
+      } else {
+        if (!textLen && !imgs.length) throw new Error('the document looks empty');
+        var r2 = await paginateHtml(holder, file.name);
+        out = r2.pages; ratio0 = r2.ratio;
+      }
+      applyPages(out, ratio0, niceTitle(file.name));
+    } catch(e){
+      flash('Sorry, that Word document couldn’t be read' + (e && e.message ? ' (' + e.message + ')' : '') + '.', 5000);
+    } finally { converting = false; }
+  }
+
+  // a PDF if there is one, then a Word document, otherwise the images (ordered by file name)
   function loadFiles(list){
     var files = Array.prototype.slice.call(list || []);
     var pdf = files.filter(function(f){ return f.type === 'application/pdf' || /\.pdf$/i.test(f.name); })[0];
     if (pdf) return loadPdf(pdf);
+    var docx = files.filter(function(f){ return /\.docx$/i.test(f.name) || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; })[0];
+    if (docx) return loadDocx(docx);
+    if (files.some(function(f){ return /\.doc$/i.test(f.name); })){ flash('Old .doc files are not supported. Please save it as .docx or PDF and try again.', 4500); return; }
     var imgs = files.filter(function(f){ return /^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name); });
     if (imgs.length) return loadImages(imgs);
-    flash('Please choose a PDF or JPG / PNG images.', 2800);
+    flash('Please choose a PDF, a Word (.docx) document or JPG / PNG images.', 3500);
   }
 
   // ---- download as PDF ------------------------------------------------------
@@ -588,9 +698,16 @@
       var pick = function(){ fileInput.value = ''; fileInput.click(); };
       document.getElementById('upBtn').addEventListener('click', pick);
       fileInput.addEventListener('change', function(){ if (fileInput.files.length) loadFiles(fileInput.files); });
-      ['dragenter', 'dragover'].forEach(function(t){ document.addEventListener(t, function(e){ e.preventDefault(); stageEl.classList.add('drag'); }); });
-      ['dragleave', 'drop'].forEach(function(t){ document.addEventListener(t, function(e){ e.preventDefault(); stageEl.classList.remove('drag'); }); });
-      document.addEventListener('drop', function(e){ var fl = e.dataTransfer && e.dataTransfer.files; if (fl && fl.length) loadFiles(fl); });
+      // drag & drop: a full-page drop zone appears as soon as a file is dragged over the page
+      var dz = document.getElementById('dropzone'), depth = 0;
+      function hasFiles(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') > -1; }
+      document.addEventListener('dragenter', function(e){ if (!hasFiles(e)) return; e.preventDefault(); depth++; dz.hidden = false; });
+      document.addEventListener('dragover', function(e){ if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      document.addEventListener('dragleave', function(e){ if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) dz.hidden = true; });
+      document.addEventListener('drop', function(e){
+        e.preventDefault(); depth = 0; dz.hidden = true;
+        var fl = e.dataTransfer && e.dataTransfer.files; if (fl && fl.length) loadFiles(fl);
+      });
     }
     setupDownload();
     prevBtn.addEventListener('click', function(){ go(-1); });
