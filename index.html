@@ -539,12 +539,22 @@
   // where Word puts them. Ordinary text documents fall back to the simple converter below.
   var NSW = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
   var NSWP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+  var NSWPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
   var NSA = 'http://schemas.openxmlformats.org/drawingml/2006/main';
   var NSR = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   function xKids(el, name){ var out = []; for (var c = el && el.firstElementChild; c; c = c.nextElementSibling) if (c.localName === name) out.push(c); return out; }
   function xKid(el, name){ return xKids(el, name)[0] || null; }
   function wAttr(el, name){ if (!el) return null; var v = el.getAttributeNS(NSW, name); if (v === null || v === '') v = el.getAttribute('w:' + name); return v === '' ? null : v; }
   function flag(el){ if (!el) return undefined; var v = wAttr(el, 'val'); return !(v === '0' || v === 'false' || v === 'off'); }
+  // the children of a run, with Word's AlternateContent/Choice blocks (used for text boxes) opened up
+  function runKids(run){
+    var out = [];
+    for (var q = run.firstElementChild; q; q = q.nextElementSibling){
+      if (q.localName === 'AlternateContent'){ var ch = xKid(q, 'Choice'); for (var z = ch && ch.firstElementChild; z; z = z.nextElementSibling) out.push(z); }
+      else out.push(q);
+    }
+    return out;
+  }
   function descend(el, ns, name){ return el ? Array.prototype.slice.call(el.getElementsByTagNameNS(ns, name)) : []; }
 
   async function readZip(file){
@@ -686,7 +696,7 @@
             if (nm === 'hyperlink' || nm === 'ins' || nm === 'smartTag' || nm === 'sdt' || nm === 'sdtContent'){ walk(n); continue; }
             if (nm !== 'r') continue;
             var r = runProps(base, n);
-            for (var k = n.firstElementChild; k; k = k.nextElementSibling){
+            for (var kl = runKids(n), ki = 0, k; ki < kl.length; ki++){ k = kl[ki];
               if (k.localName === 't'){
                 var txt = k.textContent;
                 txt.split(/(\s+)/).forEach(function(part){
@@ -699,7 +709,10 @@
               } else if (k.localName === 'drawing'){
                 var inl = xKid(k, 'inline'), anc = xKid(k, 'anchor');
                 if (inl){ var info = imgInfo(inl); if (info) atoms.push({ t: 'img', info: info, r: r }); }
-                else if (anc){ var ai = imgInfo(anc); if (ai){ ai.anchor = anc; anchors.push(ai); } }
+                else if (anc){
+                  if (descend(anc, NSWPS, 'wsp').length) anchors.push({ tb: true, anchor: anc });   // a Word text box
+                  else { var ai = imgInfo(anc); if (ai){ ai.anchor = anc; anchors.push(ai); } }
+                }
               }
             }
           }
@@ -756,6 +769,39 @@
         return { k: 'i', x: x, y: y, w: ai.w, h: ai.h, info: ai };
       }
 
+      function layoutTextBox(anc, pg, layer, paraY){
+        var ext = descend(anc, NSWP, 'extent')[0];
+        var rect = anchorOp({ anchor: anc, w: +ext.getAttribute('cx') / 12700, h: +ext.getAttribute('cy') / 12700 }, paraY);
+        var wsp = descend(anc, NSWPS, 'wsp')[0], bp = descend(wsp, NSWPS, 'bodyPr')[0];
+        function ins(n, d){ var v = bp && bp.getAttribute(n); return (v !== null && v !== undefined && v !== '' ? +v : d) / 12700; }
+        var lI = ins('lIns', 91440), tI = ins('tIns', 45720), rI = ins('rIns', 91440), bI = ins('bIns', 45720);
+        var sp = xKid(wsp, 'spPr'), sf = sp && xKid(sp, 'solidFill'), clr = sf && xKid(sf, 'srgbClr');
+        if (clr){
+          var hex = clr.getAttribute('val'), al = xKid(clr, 'alpha'), a = al ? (+al.getAttribute('val')) / 100000 : 1;
+          pg.ops[layer].push({ k: 'r', x: rect.x, y: rect.y, w: rect.w, h: rect.h, c: 'rgba(' + parseInt(hex.substr(0, 2), 16) + ',' + parseInt(hex.substr(2, 2), 16) + ',' + parseInt(hex.substr(4, 2), 16) + ',' + a + ')' });
+        }
+        var tb = xKid(wsp, 'txbx'), content = tb && xKid(tb, 'txbxContent');
+        if (!content) return;
+        var anchorV = (bp && bp.getAttribute('anchor')) || 't';
+        var items = xKids(content, 'p').map(function(p){ var pr = resolveProps(p); pr.p.__sz = pr.r.sz; return { pr: pr, at: atomsOf(p, pr.r) }; });
+        function run(emit, y0){
+          var y = y0;
+          items.forEach(function(it){
+            y += it.pr.p.before || 0;
+            if (!it.at.atoms.length) y += it.pr.r.sz * 1.22 * (it.pr.p.line || 1.08);
+            else y = setLines(it.at.atoms, it.pr.p, rect.x + lI, rect.w - lI - rI, y, function(line, yy, lh, x, availW){
+              if (emit) emitLine(line, pg.ops, x, yy, lh, availW, it.pr.p.jc, layer);
+              return yy + lh;
+            });
+            y += it.pr.p.after || 0;
+          });
+          return y;
+        }
+        var contentH = run(false, 0), innerH = rect.h - tI - bI, off = 0;
+        if (anchorV === 'ctr') off = Math.max(0, (innerH - contentH) / 2); else if (anchorV === 'b') off = Math.max(0, innerH - contentH);
+        run(true, rect.y + tI + off);
+      }
+
       S.els.forEach(function(el){
         if (el.localName !== 'p') return;                       // tables etc. are not drawn in brochure documents
         var ppr = xKid(el, 'pPr'), carriesSect = !!(ppr && xKid(ppr, 'sectPr'));
@@ -763,7 +809,10 @@
         var pr = resolveProps(el), at = atomsOf(el, pr.r);
         pr.p.__sz = pr.r.sz;
         if (at.pageBreak && page.flow){ newPage(); }
-        at.anchors.forEach(function(ai){ var op = anchorOp(ai, page.y); (wAttr(ai.anchor, 'behindDoc') === '1' || ai.anchor.getAttribute('behindDoc') === '1' ? page.ops[0] : page.ops[2]).push(op); });
+        at.anchors.forEach(function(ai){
+          var layer = (wAttr(ai.anchor, 'behindDoc') === '1' || ai.anchor.getAttribute('behindDoc') === '1') ? 0 : 2;
+          if (ai.tb) layoutTextBox(ai.anchor, page, layer, page.y); else page.ops[layer].push(anchorOp(ai, page.y));
+        });
         if (!at.atoms.length){ if (!carriesSect && !fr && !at.anchors.length){ page.y += (pr.p.before || 0) + pr.r.sz * 1.22 * (pr.p.line || 1.08) + (pr.p.after || 0); } return; }
         if (fr){
           // a floating text frame: placed at its own page position, drawn on top
@@ -812,6 +861,7 @@
       for (var L = 0; L < 3; L++){
         for (var j = 0; j < pg.ops[L].length; j++){
           var o = pg.ops[L][j];
+          if (o.k === 'r'){ ctx.fillStyle = o.c; ctx.fillRect(o.x, o.y, o.w, o.h); continue; }
           if (o.k === 'i'){
             var im = await bitmap(o.info); if (!im) continue;
             var cr = o.info.crop;
