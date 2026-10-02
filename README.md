@@ -1,7 +1,7 @@
 # Leavers 2027 FlipBook
 
-A page-turning flipbook for the Leavers 2027 brochure. Customers download the Word version, add their own
-details, upload it, and get a PDF and a digital flipbook they can share.
+A page-turning flipbook for the Leavers 2027 brochure. Customers add their logo and company details, then download
+their own PDF and a digital flipbook to share.
 
 **Live page (GitHub Pages):** https://james555ck.github.io/FlipBook/
 
@@ -14,8 +14,8 @@ details, upload it, and get a PDF and a digital flipbook they can share.
 PDF and flipbook unlock once the flipbook has been updated. The designs download is always available.
 
 ## Files
-- `index.html` - the page: layout, styles and all the flip, upload, zoom and download logic
-- `pages.js` - the 10 template pages (base64 images) shown before anything is uploaded
+- `index.html` - the page: layout, styles and all the flip, customise, zoom and download logic
+- `pages.js` - the 10 template pages (base64 images) shown before the brochure is customised
 - `Leavers-2027-designs.zip` - the EPS design files that **Download leavers designs** saves (replace the zip to change them)
 - `Leavers-2027.docx` - the Word template the page fills in (its placeholder lines and logo boxes). Replace it to change the design
 
@@ -48,6 +48,5 @@ The pictures shown before anything is customised are in `pages.js` (the template
   and draws the logo and text as a separate sharp layer, on true A4 pages.
 
 ## Notes
-- Uploads are processed entirely in the visitor's browser (up to 80 pages, 2200 px on the long side); nothing is sent to a server.
-- PDF and Word upload load their helper libraries from a CDN, so they need an internet connection the first time.
-- Downloaded flipbooks are view-only (no upload, no template).
+- Customising happens entirely in the visitor's browser; nothing is sent to a server.
+- Downloaded flipbooks are view-only (no form, no template, no design files).
