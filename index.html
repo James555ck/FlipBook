@@ -150,8 +150,8 @@
     </li>
     <li class="step">
       <div class="sn">Step 3</div>
-      <div class="st">Happy with it? Download it as a PDF, and as a digital flipbook to share.</div>
-      <div class="btns"><button class="btn" id="pdfBtn" type="button" disabled>Download PDF</button><button class="btn" id="dlBtn" type="button" disabled>Download digital flipbook</button></div>
+      <div class="st">Happy with it? Download it as a PDF, and as a digital flipbook to share. The leavers design files (EPS) are here too.</div>
+      <div class="btns"><button class="btn" id="pdfBtn" type="button" disabled>Download PDF</button><button class="btn" id="dlBtn" type="button" disabled>Download digital flipbook</button><button class="btn" id="designsBtn" type="button" disabled>Download leavers designs</button></div>
     </li>
   </ol>
   <div class="stepnote" id="stepNote" hidden></div>
@@ -188,7 +188,7 @@
   var zoom = 1, panX = 0, panY = 0, ZMIN = 1, ZMAX = 4;
   var viewOnly = !!window.VIEW_ONLY;   // downloaded copies are for viewing: no upload
   var titleEl = document.getElementById('title'), statusEl = document.getElementById('status');
-  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn'), pdfBtn = document.getElementById('pdfBtn'), tplBtn = document.getElementById('tplBtn');
+  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn'), pdfBtn = document.getElementById('pdfBtn'), tplBtn = document.getElementById('tplBtn'), designsBtn = document.getElementById('designsBtn');
   var saver = null, uploaded = false;
   var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/', MAX_SIDE = 2200, MAX_PAGES = 80;
   var pageFlip = null, spreadMode = true, total = 0, hasBlanks = false, endAlone = false;
@@ -970,6 +970,8 @@
   function refreshSteps(){
     var ok = !!saver;
     tplBtn.disabled = !ok || typeof TEMPLATE_DOCX === 'undefined';
+    designsBtn.disabled = !ok;            // the design files do not depend on the upload
+    designsBtn.title = ok ? '' : 'Downloads are not available in this view';
     pdfBtn.disabled = !(ok && uploaded);
     dlBtn.disabled = !(ok && uploaded);
     var hint = !ok ? 'Downloads are not available in this view' : 'Upload your saved Word file first (step 2)';
@@ -979,6 +981,26 @@
       note.hidden = false;
       note.textContent = 'Downloads are not available in this view. Open the website version of this page (or sign in to Claude) to use steps 1 and 3.';
     } else note.hidden = true;
+  }
+  function setupDesigns(){
+    designsBtn.addEventListener('click', async function(){
+      if (!saver) return;
+      designsBtn.disabled = true; var label = designsBtn.textContent; designsBtn.textContent = 'Preparing…';
+      try {
+        var blob;
+        if (typeof DESIGNS_ZIP !== 'undefined'){
+          var bin = atob(DESIGNS_ZIP), bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          blob = new Blob([bytes], { type: 'application/zip' });
+        } else {
+          var r = await fetch('Leavers-2027-designs.zip');
+          if (!r.ok) throw new Error('designs file missing');
+          blob = await r.blob();
+        }
+        await saver.save({ filename: 'Leavers 2027 designs.zip', data: blob });
+      } catch(e){ flash('Sorry, the design files could not be downloaded.', 3500); }
+      designsBtn.textContent = label; designsBtn.disabled = false;
+    });
   }
   function setupTemplate(){
     tplBtn.addEventListener('click', async function(){
@@ -1038,6 +1060,8 @@
         }
         var tA = src.indexOf('<script>const TEMPLATE_DOCX'), tZ = tA < 0 ? -1 : src.indexOf('<\/script>', tA);
         if (tA >= 0 && tZ > tA) src = src.slice(0, tA) + src.slice(tZ + 9);
+        var dA = src.indexOf('<script>const DESIGNS_ZIP'), dZ = dA < 0 ? -1 : src.indexOf('<\/script>', dA);
+        if (dA >= 0 && dZ > dA) src = src.slice(0, dA) + src.slice(dZ + 9);
         src = src.replace('<script src="template.js"><\/script>', '');
         var inject = '<script>window.VIEW_ONLY=true;<\/script>';
         if (pages !== DEFAULT_PAGES){
@@ -1143,6 +1167,7 @@
       });
     }
     setupTemplate();
+    setupDesigns();
     refreshSteps();
     setupDownload();
     prevBtn.addEventListener('click', function(){ go(-1); });

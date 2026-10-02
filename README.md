@@ -9,13 +9,15 @@ details, upload it, and get a PDF and a digital flipbook they can share.
 1. **Download to customise** - saves `Leavers 2027.docx`. Open it in Word, add your company details on the back page
    (the six white placeholder lines), drop in any images you need, then save it.
 2. **Upload your .docx** - drop the saved file on the page (or use the button). It appears in the flipbook so you can check it.
-3. **Download PDF** (the brochure as a PDF) and **Download digital flipbook** (one self-contained, view-only `.html` file to share).
+3. **Download PDF** (the brochure as a PDF), **Download digital flipbook** (one self-contained, view-only `.html` file to share) and
+   **Download leavers designs** (the six EPS design files in one zip).
 
 Step 3 unlocks once a file has been uploaded.
 
 ## Files
 - `index.html` - the page: layout, styles and all the flip, upload, zoom and download logic
 - `pages.js` - the 10 brochure pages (base64 images) shown before anything is uploaded
+- `Leavers-2027-designs.zip` - the EPS design files that **Download leavers designs** saves (replace the zip to change them)
 - `template.js` - the Word template that **Download to customise** saves (base64 of `Leavers 2027.docx`)
 
 The page-turning library ([page-flip](https://github.com/Nodlik/StPageFlip) 2.0.7) loads from the jsDelivr CDN.
