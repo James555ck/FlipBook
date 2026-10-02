@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Leavers Brochure Flipbook</title>
+<title>Leavers 2027</title>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 <style>
   :root{ --bg:#fff; --stage:#fff; --fg:#201f1c; --muted:#6b685f; }
@@ -47,7 +47,8 @@
   }
   .titles{min-width:0}
   .topbar h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .actions{display:flex;gap:8px;align-items:center}
+  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  @media (max-width:560px){ .btn{padding:7px 11px;font-size:12px} .actions{gap:6px} }
   .btn{flex:0 0 auto;border:1px solid rgba(0,0,0,.18);background:#fff;color:#201f1c;font:inherit;font-size:13px;
     font-weight:600;padding:8px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
   .btn:hover{background:#f3f2ee}
@@ -82,11 +83,12 @@
 
 <div class="topbar">
   <div class="titles">
-    <h1 id="title">Leavers Brochure 2026</h1>
+    <h1 id="title">Leavers 2027</h1>
     <div class="sub">Drag a corner, scroll, click the arrows, or use the keyboard</div>
   </div>
   <div class="actions">
-    <button class="btn" id="dlBtn" type="button" hidden>Download</button>
+    <button class="btn" id="pdfBtn" type="button" hidden>Download PDF</button>
+    <button class="btn" id="dlBtn" type="button" hidden>Download Flipbook</button>
     <button class="btn primary" id="upBtn" type="button" title="Choose a PDF, or several page images (JPG / PNG)">Upload</button>
   </div>
 </div>
@@ -114,13 +116,13 @@
   var nextBtn = document.getElementById('nextBtn');
   var FLIP_MS = 480; // one constant speed for every turn
   var ratio = 1.4142; // A4 landscape until a file says otherwise
-  var DEFAULT_PAGES = PAGES, pages = PAGES, docTitle = 'Leavers Brochure 2026';
+  var DEFAULT_PAGES = PAGES, pages = PAGES, docTitle = 'Leavers 2027';
   if (window.PRELOADED && window.PRELOADED.pages){ pages = window.PRELOADED.pages; ratio = window.PRELOADED.ratio || ratio; docTitle = window.PRELOADED.title || docTitle; }
   var zoomerEl = document.getElementById('zoomer'), shadeL = document.getElementById('shadeL'), shadeR = document.getElementById('shadeR');
   var zoom = 1, panX = 0, panY = 0, ZMIN = 1, ZMAX = 4;
   var viewOnly = !!window.VIEW_ONLY;   // downloaded copies are for viewing: no upload
   var titleEl = document.getElementById('title'), statusEl = document.getElementById('status');
-  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn');
+  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn'), pdfBtn = document.getElementById('pdfBtn');
   var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/', MAX_SIDE = 2200, MAX_PAGES = 80;
   var pageFlip = null, spreadMode = true, total = 0, hasBlanks = false, endAlone = false;
   var curIdx = 0, busy = false, queued = 0, queuedDir = 0, busyTimer, builtW = 0, builtH = 0;
@@ -407,12 +409,75 @@
     flash('Please choose a PDF or JPG / PNG images.', 2800);
   }
 
+  // ---- download as PDF ------------------------------------------------------
+  // Writes a plain PDF with one page per flipbook page. The pages are already JPEGs, so they are embedded
+  // as they are (no re-compression), each PDF page sized to its image at 150 dpi.
+  function dataUrlToBytes(u){
+    var b = atob(u.slice(u.indexOf(',') + 1)), a = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
+    return a;
+  }
+  function imageSize(u){
+    return new Promise(function(res, rej){
+      var im = new Image(); im.onload = function(){ res({ w: im.naturalWidth, h: im.naturalHeight }); };
+      im.onerror = function(){ rej(new Error('page image')); }; im.src = u;
+    });
+  }
+  async function buildPdf(list, title){
+    var enc = new TextEncoder(), parts = [], offsets = [], pos = 0;
+    function add(x){ var b = typeof x === 'string' ? enc.encode(x) : x; parts.push(b); pos += b.length; }
+    function obj(n, body){ offsets[n] = pos; add(n + ' 0 obj\n' + body + '\nendobj\n'); }
+    var n = list.length, kids = [];
+    add('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+    obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+    for (var i = 0; i < n; i++) kids.push((3 + i * 3) + ' 0 R');
+    obj(2, '<< /Type /Pages /Count ' + n + ' /Kids [' + kids.join(' ') + '] >>');
+    for (var p = 0; p < n; p++){
+      var sz = await imageSize(list[p]), bytes = dataUrlToBytes(list[p]);
+      var W = (sz.w * 72 / 150).toFixed(2), H = (sz.h * 72 / 150).toFixed(2);
+      var pg = 3 + p * 3, ct = pg + 1, im = pg + 2, content = 'q ' + W + ' 0 0 ' + H + ' 0 0 cm /Im0 Do Q';
+      obj(pg, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /XObject << /Im0 ' + im + ' 0 R >> >> /Contents ' + ct + ' 0 R >>');
+      obj(ct, '<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+      offsets[im] = pos;
+      add(im + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + sz.w + ' /Height ' + sz.h +
+          ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + bytes.length + ' >>\nstream\n');
+      add(bytes);
+      add('\nendstream\nendobj\n');
+    }
+    var info = 3 + n * 3;
+    obj(info, '<< /Title <FEFF' + Array.prototype.map.call(String(title || 'Flipbook'), function(c){ return ('0000' + c.charCodeAt(0).toString(16)).slice(-4); }).join('') + '> /Producer (FlipBook) >>');
+    var xref = pos, total = info + 1;
+    var xr = 'xref\n0 ' + total + '\n0000000000 65535 f \n';
+    for (var k = 1; k < total; k++) xr += ('0000000000' + offsets[k]).slice(-10) + ' 00000 n \n';
+    add(xr + 'trailer\n<< /Size ' + total + ' /Root 1 0 R /Info ' + info + ' 0 R >>\nstartxref\n' + xref + '\n%%EOF\n');
+    return new Blob(parts, { type: 'application/pdf' });
+  }
+
   // ---- download a self-contained copy ------------------------------------
   async function setupDownload(){
     var dl = null;
     try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch(e){}
+    if (!dl && !window.claude && !window.VIEW_ONLY){
+      // Normal website (e.g. GitHub Pages / localhost): a plain browser download does the job.
+      dl = { save: function(o){
+        return new Promise(function(res){
+          var url = URL.createObjectURL(o.data), a = document.createElement('a');
+          a.href = url; a.download = o.filename; document.body.appendChild(a); a.click();
+          setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); res({ status: 'saved' }); }, 1500);
+        });
+      } };
+    }
     if (!dl) return;
-    dlBtn.hidden = false;
+    dlBtn.hidden = false; pdfBtn.hidden = false;
+    function fileTitle(){ return (docTitle || 'Flipbook').replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Flipbook'; }
+    pdfBtn.addEventListener('click', async function(){
+      pdfBtn.disabled = true; var label = pdfBtn.textContent; pdfBtn.textContent = 'Preparing\u2026';
+      try {
+        var blob = await buildPdf(pages, docTitle);
+        await dl.save({ filename: fileTitle() + '.pdf', data: blob });
+      } catch(e){ /* declined or unavailable */ }
+      pdfBtn.textContent = label; pdfBtn.disabled = false;
+    });
     dlBtn.addEventListener('click', async function(){
       dlBtn.disabled = true; var label = dlBtn.textContent; dlBtn.textContent = 'Preparing…';
       try {
@@ -425,6 +490,12 @@
             src = src.replace(libTag[0], function(){ return '<script>' + libJs + '<\/script>'; });
           }
         } catch(e){ /* keep the CDN link */ }
+        var extTag = '<script src="pages.js"><\/script>';
+        if (src.indexOf(extTag) > -1){
+          // website layout: pages.js is a separate file, so fold it into the saved copy (or drop it if new pages were uploaded)
+          var pagesJs = pages === DEFAULT_PAGES ? await (await fetch('pages.js')).text() : 'const PAGES=[];';
+          src = src.replace(extTag, function(){ return '<script>' + pagesJs + '<\/script>'; });
+        }
         var inject = '<script>window.VIEW_ONLY=true;<\/script>';
         if (pages !== DEFAULT_PAGES){
           // uploaded pages: drop the built-in brochure images and embed the current pages instead
