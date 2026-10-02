@@ -6,22 +6,18 @@ details, upload it, and get a PDF and a digital flipbook they can share.
 **Live page (GitHub Pages):** https://james555ck.github.io/FlipBook/
 
 ## How customers use it
-1. **Download to customise** - saves `Leavers 2027.docx`. Open it in Word, click the "Add your logo" boxes to add your logo,
-   replace the placeholder company details on the back page, add any images you need, then save it.
-2. **Upload your .docx** - drop the saved file on the page (or use the button). It appears in the flipbook so you can check it.
-3. **Download PDF** (the brochure as a PDF), **Download digital flipbook** (one self-contained, view-only `.html` file to share) and
-   **Download leavers designs** (the six EPS design files in one zip).
+1. **Customise your Leavers 2027 brochure** - type the company details, choose a logo and press **Update flipbook**.
+   The page fills the Word template's placeholder lines and both logo boxes and redraws the brochure.
+2. **Download** - **Download PDF** (true A4), **Download digital flipbook** (one self-contained, view-only `.html` file to share)
+   and **Download leavers designs** (the six EPS design files in one zip).
 
-Step 3 unlocks once a file has been uploaded.
-
-**No Word?** Open "Or customise it right here", type the company details, choose a logo picture and press *Update flipbook*.
-The page fills the template's placeholder lines and logo boxes itself (same result as editing the Word file).
+PDF and flipbook unlock once the flipbook has been updated. The designs download is always available.
 
 ## Files
 - `index.html` - the page: layout, styles and all the flip, upload, zoom and download logic
 - `pages.js` - the 10 template pages (base64 images) shown before anything is uploaded
 - `Leavers-2027-designs.zip` - the EPS design files that **Download leavers designs** saves (replace the zip to change them)
-- `Leavers-2027.docx` - the Word template that **Download to customise** saves as `Leavers 2027.docx` (replace it to change the template)
+- `Leavers-2027.docx` - the Word template the page fills in (its placeholder lines and logo boxes). Replace it to change the design
 
 The page-turning library ([page-flip](https://github.com/Nodlik/StPageFlip) 2.0.7) loads from the jsDelivr CDN.
 
@@ -38,18 +34,14 @@ then visit http://localhost:8080
 3. After a minute the site is live at https://james555ck.github.io/FlipBook/
 
 ## Updating the Word template
-Replace the template by regenerating `template.js`:
-
-    node -e "const fs=require('fs');fs.writeFileSync('template.js','const TEMPLATE_DOCX = \"'+fs.readFileSync('Leavers 2027.docx').toString('base64')+'\";\n')"
-
-The upload reader expects a brochure-style Word file: one full-page picture per page, with any text in text frames
-or boxes placed on top of the pictures. Pictures and text you add are drawn where Word shows them.
+Replace `Leavers-2027.docx` with the new Word file. The placeholders the form fills are the text lines `[Your company Name]`,
+`[Address line 1]`, `[Town]`, `[Postcode]`, `[Phone]` and `[Website]`, and the picture controls tagged `LogoFront` / `LogoBack`.
+The pictures shown before anything is customised are in `pages.js` (the template's pages as drawn by the page itself).
 
 ## Other features
 - Front and back covers sit centred, then slide to a two-page spread as they open (single page on phones).
 - Every page turns the same way at one constant speed. Turn with drag, scroll, the arrows or the left/right keys.
-- Upload also accepts a PDF (rendered with PDFium) or several JPG / PNG page images; ordinary text-only Word
-  documents are converted to simple A4 landscape pages.
+- The file upload (PDF, Word, images) is still in the code but switched off in the page.
 - **Zoom** (desktop): buttons, Ctrl + scroll / pinch, or `+` `-` `0`. Drag or scroll to pan while zoomed.
 - Soft per-page shadows for contrast on the white background.
 - **PDF quality:** for Word templates the PDF keeps each page's own picture exactly as stored in the Word file (no re-compression)
