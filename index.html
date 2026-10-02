@@ -83,6 +83,24 @@
   .zoomctl button:disabled{opacity:.3;cursor:default}
   .zoomctl .zv{min-width:46px;text-align:center;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:#201f1c}
   @media (hover:hover) and (pointer:fine) and (min-width:700px){ .zoomctl{display:flex} }
+  /* how it works */
+  .how{flex:0 0 auto;padding:0 20px 10px}
+  .how[hidden]{display:none}
+  .how .intro{margin:0 0 10px;font-size:13px;line-height:1.5;color:#4a483f;max-width:1000px}
+  .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .step{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:#fafaf8}
+  .sn{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9c6b2e}
+  .st{font-size:13px;line-height:1.4;color:#33312b;flex:1}
+  .step .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .upinfo{font-size:12px;color:#2f6b3a;font-weight:600}
+  .stepnote{margin-top:8px;font-size:12px;color:#7a5a1d;background:#fff6e1;border:1px solid #f0dca8;border-radius:8px;padding:6px 10px}
+  .stepnote[hidden],.upinfo[hidden]{display:none}
+  @media (max-width:820px){
+    html,body{height:auto;min-height:100%}
+    body{overflow:auto}
+    .steps{grid-template-columns:1fr}
+    .stage{flex:none;height:min(78vw,460px);min-height:300px}
+  }
 </style>
 </head>
 <body>
@@ -93,12 +111,31 @@
     <h1 id="title">Leavers 2027</h1>
     <div class="sub">Drag a corner, scroll, click the arrows, or use the keyboard</div>
   </div>
-  <div class="actions">
-    <button class="btn" id="pdfBtn" type="button" hidden>Download PDF</button>
-    <button class="btn" id="dlBtn" type="button" hidden>Download Flipbook</button>
-    <button class="btn primary" id="upBtn" type="button" title="Choose a PDF, a Word document (.docx) or page images (JPG / PNG)">Upload</button>
-  </div>
 </div>
+<section class="how" id="how">
+  <p class="intro"><b>Make your own Leavers 2027 brochure in three steps.</b> Download the Word version, add your details
+  to the back page and any images you need, save it, then upload it here. You can then download a PDF and a digital
+  flipbook to share.</p>
+  <ol class="steps">
+    <li class="step">
+      <div class="sn">Step 1</div>
+      <div class="st">Download the brochure as a Word file. Open it in Word, add your company details on the back page, drop in any images you need, then save it.</div>
+      <div class="btns"><button class="btn primary" id="tplBtn" type="button" disabled>Download to customise</button></div>
+    </li>
+    <li class="step">
+      <div class="sn">Step 2</div>
+      <div class="st">Re-upload your saved Word (.docx) file. It appears in the flipbook below so you can check it.</div>
+      <div class="btns"><button class="btn primary" id="upBtn" type="button" title="Choose your saved Word (.docx) file">Upload your .docx</button></div>
+      <div class="upinfo" id="upInfo" hidden></div>
+    </li>
+    <li class="step">
+      <div class="sn">Step 3</div>
+      <div class="st">Happy with it? Download it as a PDF, and as a digital flipbook to share.</div>
+      <div class="btns"><button class="btn" id="pdfBtn" type="button" disabled>Download PDF</button><button class="btn" id="dlBtn" type="button" disabled>Download digital flipbook</button></div>
+    </li>
+  </ol>
+  <div class="stepnote" id="stepNote" hidden></div>
+</section>
 <input type="file" id="fileInput" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
 
 <div class="stage">
@@ -115,6 +152,7 @@
 </div>
 
 <script src="pages.js"></script>
+<script src="template.js"></script>
 <script>
 (function(){
   var stageEl = document.querySelector('.stage');
@@ -130,7 +168,8 @@
   var zoom = 1, panX = 0, panY = 0, ZMIN = 1, ZMAX = 4;
   var viewOnly = !!window.VIEW_ONLY;   // downloaded copies are for viewing: no upload
   var titleEl = document.getElementById('title'), statusEl = document.getElementById('status');
-  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn'), pdfBtn = document.getElementById('pdfBtn');
+  var fileInput = document.getElementById('fileInput'), dlBtn = document.getElementById('dlBtn'), pdfBtn = document.getElementById('pdfBtn'), tplBtn = document.getElementById('tplBtn');
+  var saver = null, uploaded = false;
   var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/', MAX_SIDE = 2200, MAX_PAGES = 80;
   var pageFlip = null, spreadMode = true, total = 0, hasBlanks = false, endAlone = false;
   var curIdx = 0, busy = false, queued = 0, queuedDir = 0, busyTimer, builtW = 0, builtH = 0;
@@ -306,6 +345,9 @@
   }
   function applyPages(list, r, title){
     pages = list; ratio = r || 1.4142; docTitle = title || 'Flipbook';
+    uploaded = true;
+    var ui = document.getElementById('upInfo'); ui.hidden = false; ui.textContent = '\u2713 Loaded: ' + docTitle;
+    refreshSteps();
     say('');
     build();
   }
@@ -463,6 +505,303 @@
     } catch(e){}
     return false;                                              // unknown: landscape
   }
+  // ---- Word (.docx) page renderer --------------------------------------------------
+  // For brochure-style documents (one full-page picture per page, with text boxes/frames and extra pictures
+  // placed on top) the Word file is read directly and each page is drawn with its pictures and text exactly
+  // where Word puts them. Ordinary text documents fall back to the simple converter below.
+  var NSW = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  var NSWP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+  var NSA = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  var NSR = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  function xKids(el, name){ var out = []; for (var c = el && el.firstElementChild; c; c = c.nextElementSibling) if (c.localName === name) out.push(c); return out; }
+  function xKid(el, name){ return xKids(el, name)[0] || null; }
+  function wAttr(el, name){ if (!el) return null; var v = el.getAttributeNS(NSW, name); if (v === null || v === '') v = el.getAttribute('w:' + name); return v === '' ? null : v; }
+  function flag(el){ if (!el) return undefined; var v = wAttr(el, 'val'); return !(v === '0' || v === 'false' || v === 'off'); }
+  function descend(el, ns, name){ return el ? Array.prototype.slice.call(el.getElementsByTagNameNS(ns, name)) : []; }
+
+  async function readZip(file){
+    var buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer), eocd = -1;
+    for (var i = buf.length - 22; i >= Math.max(0, buf.length - 70000); i--){ if (dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; } }
+    if (eocd < 0) throw new Error('not a Word file');
+    var count = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), dec = new TextDecoder(), entries = {};
+    for (var n = 0; n < count; n++){
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+      entries[dec.decode(buf.subarray(p + 46, p + 46 + nl))] = { method: dv.getUint16(p + 10, true), csize: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) };
+      p += 46 + nl + el + cl;
+    }
+    var api = {
+      get: async function(name){
+        var e = entries[name]; if (!e) return null;
+        var start = e.off + 30 + dv.getUint16(e.off + 26, true) + dv.getUint16(e.off + 28, true), raw = buf.subarray(start, start + e.csize);
+        if (e.method === 0) return raw;
+        var ds = new DecompressionStream('deflate-raw'), wr = ds.writable.getWriter(); wr.write(raw); wr.close();
+        return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+      },
+      text: async function(name){ var b = await api.get(name); return b ? dec.decode(b) : null; }
+    };
+    return api;
+  }
+
+  function readRPr(rpr){
+    var o = {}; if (!rpr) return o;
+    var b = flag(xKid(rpr, 'b')), i = flag(xKid(rpr, 'i')), u = xKid(rpr, 'u'), sz = xKid(rpr, 'sz'), col = xKid(rpr, 'color'), f = xKid(rpr, 'rFonts');
+    if (b !== undefined) o.b = b; if (i !== undefined) o.i = i;
+    if (u) o.u = wAttr(u, 'val') !== 'none';
+    if (sz) o.sz = (+wAttr(sz, 'val')) / 2;
+    if (col && wAttr(col, 'val') && wAttr(col, 'val') !== 'auto') o.color = '#' + wAttr(col, 'val');
+    if (f) o.font = wAttr(f, 'ascii') || wAttr(f, 'hAnsi');
+    return o;
+  }
+  function readPPr(ppr){
+    var o = {}; if (!ppr) return o;
+    var jc = xKid(ppr, 'jc'), sp = xKid(ppr, 'spacing'), ind = xKid(ppr, 'ind');
+    if (jc) o.jc = wAttr(jc, 'val');
+    if (sp){
+      if (wAttr(sp, 'before') !== null) o.before = +wAttr(sp, 'before') / 20;
+      if (wAttr(sp, 'after') !== null) o.after = +wAttr(sp, 'after') / 20;
+      if (wAttr(sp, 'line') !== null) o.line = +wAttr(sp, 'line') / 240;
+    }
+    if (ind){
+      if (wAttr(ind, 'left') !== null) o.indL = +wAttr(ind, 'left') / 20;
+      if (wAttr(ind, 'right') !== null) o.indR = +wAttr(ind, 'right') / 20;
+      if (wAttr(ind, 'firstLine') !== null) o.first = +wAttr(ind, 'firstLine') / 20;
+      if (wAttr(ind, 'hanging') !== null) o.first = -(+wAttr(ind, 'hanging') / 20);
+    }
+    return o;
+  }
+  function parseStyles(xml){
+    var res = { map: {}, dr: {}, dp: {}, normal: null };
+    if (!xml) return res;
+    var d = new DOMParser().parseFromString(xml, 'application/xml');
+    var dd = d.getElementsByTagNameNS(NSW, 'docDefaults')[0];
+    if (dd){ res.dr = readRPr(xKid(xKid(dd, 'rPrDefault'), 'rPr')); res.dp = readPPr(xKid(xKid(dd, 'pPrDefault'), 'pPr')); }
+    descend(d, NSW, 'style').forEach(function(st){
+      var id = wAttr(st, 'styleId');
+      res.map[id] = { based: wAttr(xKid(st, 'basedOn'), 'val'), r: readRPr(xKid(st, 'rPr')), p: readPPr(xKid(st, 'pPr')) };
+      if (wAttr(st, 'type') === 'paragraph' && wAttr(st, 'default') === '1') res.normal = id;
+    });
+    return res;
+  }
+  function styleChain(styles, id, key){
+    var chain = [], seen = {};
+    while (id && styles.map[id] && !seen[id]){ seen[id] = 1; chain.unshift(styles.map[id][key]); id = styles.map[id].based; }
+    return chain;
+  }
+
+  var measureCtx = null;
+  function fontCss(r){
+    var fam = r.font ? '"' + r.font + '", ' : '';
+    return (r.i ? 'italic ' : '') + (r.b ? 'bold ' : '') + r.sz + 'px ' + fam + 'Calibri, Carlito, "Segoe UI", Arial, Helvetica, sans-serif';
+  }
+  function measure(text, r){ measureCtx.font = fontCss(r); return measureCtx.measureText(text).width; }
+
+  // Lay the Word file out into pages of draw operations (no pixels yet).
+  async function layoutDocx(zip){
+    var docXml = await zip.text('word/document.xml');
+    if (!docXml) throw new Error('no document');
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    var doc = new DOMParser().parseFromString(docXml, 'application/xml');
+    var styles = parseStyles(await zip.text('word/styles.xml'));
+    var rels = {};
+    var relXml = await zip.text('word/_rels/document.xml.rels');
+    if (relXml) descend(new DOMParser().parseFromString(relXml, 'application/xml'), 'http://schemas.openxmlformats.org/package/2006/relationships', 'Relationship')
+      .forEach(function(r){ rels[r.getAttribute('Id')] = r.getAttribute('Target'); });
+    var body = doc.getElementsByTagNameNS(NSW, 'body')[0];
+
+    // split the body into sections (a paragraph holding a sectPr closes a section)
+    var sections = [], cur = [];
+    for (var c = body.firstElementChild; c; c = c.nextElementSibling){
+      if (c.localName === 'sectPr'){ sections.push({ els: cur, sect: c }); cur = []; continue; }
+      cur.push(c);
+      if (c.localName === 'p'){ var sp = xKid(xKid(c, 'pPr'), 'sectPr'); if (sp){ sections.push({ els: cur, sect: sp }); cur = []; } }
+    }
+    if (cur.length) sections.push({ els: cur, sect: null });
+
+    var pagesOut = [];
+    sections.forEach(function(S){
+      var sz = S.sect && xKid(S.sect, 'pgSz'), mar = S.sect && xKid(S.sect, 'pgMar');
+      var pw = (sz && +wAttr(sz, 'w') || 11906) / 20, ph = (sz && +wAttr(sz, 'h') || 16838) / 20;
+      if (sz && wAttr(sz, 'orient') === 'landscape' && pw < ph){ var t = pw; pw = ph; ph = t; }
+      var mT = (mar ? +wAttr(mar, 'top') : 1440) / 20, mR = (mar ? +wAttr(mar, 'right') : 1440) / 20,
+          mB = (mar ? +wAttr(mar, 'bottom') : 1440) / 20, mL = (mar ? +wAttr(mar, 'left') : 1440) / 20;
+      var secPages = [], page = null;
+      function newPage(){ page = { w: pw, h: ph, ops: [[], [], []], y: mT, flow: false }; secPages.push(page); return page; }
+      newPage();
+
+      function resolveProps(p){
+        var ppr = xKid(p, 'pPr'), sid = ppr && wAttr(xKid(ppr, 'pStyle'), 'val') || styles.normal;
+        var pp = Object.assign({}, styles.dp), rp = Object.assign({}, styles.dr);
+        styleChain(styles, sid, 'p').forEach(function(x){ Object.assign(pp, x); });
+        styleChain(styles, sid, 'r').forEach(function(x){ Object.assign(rp, x); });
+        Object.assign(pp, readPPr(ppr));
+        if (ppr) Object.assign(rp, readRPr(xKid(ppr, 'rPr')));
+        if (!rp.sz) rp.sz = 11;
+        return { p: pp, r: rp };
+      }
+      function runProps(base, r){ return Object.assign({}, base, readRPr(xKid(r, 'rPr'))); }
+      function imgInfo(dr){
+        var blip = descend(dr, NSA, 'blip')[0]; if (!blip) return null;
+        var rid = blip.getAttributeNS(NSR, 'embed') || blip.getAttribute('r:embed');
+        var ext = descend(dr, NSWP, 'extent')[0]; if (!rid || !ext || !rels[rid]) return null;
+        var sr = descend(dr, NSA, 'srcRect')[0], crop = null;
+        if (sr) crop = { l: +(sr.getAttribute('l') || 0) / 100000, t: +(sr.getAttribute('t') || 0) / 100000, r: +(sr.getAttribute('r') || 0) / 100000, b: +(sr.getAttribute('b') || 0) / 100000 };
+        return { rid: rid, path: 'word/' + rels[rid].replace(/^\//, '').replace(/^word\//, ''), w: +ext.getAttribute('cx') / 12700, h: +ext.getAttribute('cy') / 12700, crop: crop };
+      }
+      // text + inline pictures of one paragraph -> atoms
+      function atomsOf(p, base){
+        var atoms = [], anchors = [], pageBreak = false;
+        (function walk(node){
+          for (var n = node.firstElementChild; n; n = n.nextElementSibling){
+            var nm = n.localName;
+            if (nm === 'pPr' || nm === 'del') continue;
+            if (nm === 'hyperlink' || nm === 'ins' || nm === 'smartTag' || nm === 'sdt' || nm === 'sdtContent'){ walk(n); continue; }
+            if (nm !== 'r') continue;
+            var r = runProps(base, n);
+            for (var k = n.firstElementChild; k; k = k.nextElementSibling){
+              if (k.localName === 't'){
+                var txt = k.textContent;
+                txt.split(/(\s+)/).forEach(function(part){
+                  if (!part) return;
+                  if (/^\s+$/.test(part)) atoms.push({ t: 'sp', r: r, w: measure(' ', r) });
+                  else atoms.push({ t: 'w', s: part, r: r, w: measure(part, r) });
+                });
+              } else if (k.localName === 'tab'){ atoms.push({ t: 'tab', r: r });
+              } else if (k.localName === 'br'){ if (wAttr(k, 'type') === 'page') pageBreak = true; else atoms.push({ t: 'br', r: r });
+              } else if (k.localName === 'drawing'){
+                var inl = xKid(k, 'inline'), anc = xKid(k, 'anchor');
+                if (inl){ var info = imgInfo(inl); if (info) atoms.push({ t: 'img', info: info, r: r }); }
+                else if (anc){ var ai = imgInfo(anc); if (ai){ ai.anchor = anc; anchors.push(ai); } }
+              }
+            }
+          }
+        })(p);
+        return { atoms: atoms, anchors: anchors, pageBreak: pageBreak };
+      }
+      // break atoms into lines inside a box; place() receives each finished line
+      function setLines(atoms, props, x0, width, startY, place){
+        var avail = width - (props.indL || 0) - (props.indR || 0), y = startY, line = null, first = true;
+        var lm = props.line || 1.08;
+        function lineHeightOf(a){ return Math.max(a.r.sz * 1.22 * lm, a.t === 'img' ? a.h : 0); }
+        function newLine(){ line = { a: [], w: 0, h: 0, sz: 0 }; }
+        function flush(){
+          if (!line) return;
+          while (line.a.length && line.a[line.a.length - 1].t === 'sp'){ line.w -= line.a.pop().w; }
+          var lh = line.h || (props.__sz || 11) * 1.22 * lm;
+          y = place(line, y, lh, x0 + (props.indL || 0) + (first ? (props.first || 0) : 0), avail - (first ? (props.first || 0) : 0));
+          first = false; line = null;
+        }
+        newLine();
+        atoms.forEach(function(a){
+          if (a.t === 'br'){ if (!line.h) line.h = a.r.sz * 1.22 * lm; flush(); newLine(); return; }
+          if (a.t === 'tab'){ a.w = 36 - (line.w % 36); }
+          if (a.t === 'img'){ a.w = Math.min(a.info.w, avail); a.h = a.info.h * (a.w / a.info.w); }
+          var wouldBe = line.w + a.w;
+          if (wouldBe > (first ? avail - (props.first || 0) : avail) + 0.01 && line.a.some(function(z){ return z.t !== 'sp'; })){ flush(); newLine(); if (a.t === 'sp') return; }
+          line.a.push(a); line.w += a.w; line.h = Math.max(line.h, lineHeightOf(a)); line.sz = Math.max(line.sz, a.r.sz);
+        });
+        if (line && (line.a.length || first)) flush();
+        return y;
+      }
+      function emitLine(line, ops, x, y, lh, availW, jc, layer){
+        var off = 0;
+        if (jc === 'center') off = (availW - line.w) / 2; else if (jc === 'right' || jc === 'end') off = availW - line.w;
+        var cx = x + Math.max(0, off);
+        line.a.forEach(function(a){
+          if (a.t === 'w'){ ops[layer].push({ k: 't', x: cx, y: y + a.r.sz * 1.0 + (lh - a.r.sz * 1.22) / 2, s: a.s, f: fontCss(a.r), c: a.r.color || '#000', u: !!a.r.u, w: a.w }); }
+          else if (a.t === 'img'){ ops[layer].push({ k: 'i', x: cx, y: y + (lh - a.h), w: a.w, h: a.h, info: a.info }); }
+          cx += a.w;
+        });
+      }
+      function anchorOp(ai, paraY){
+        var anc = ai.anchor, ph_ = descend(anc, NSWP, 'positionH')[0], pv_ = descend(anc, NSWP, 'positionV')[0], x = 0, y = 0;
+        function pos(el, rangeStart, rangeLen, size){
+          if (!el) return rangeStart;
+          var off = xKid(el, 'posOffset'), al = xKid(el, 'align');
+          if (off) return rangeStart + (+off.textContent) / 12700;
+          if (al){ var v = al.textContent; if (v === 'center') return rangeStart + (rangeLen - size) / 2; if (v === 'right' || v === 'bottom' || v === 'outside') return rangeStart + rangeLen - size; }
+          return rangeStart;
+        }
+        var rh = ph_ && ph_.getAttribute('relativeFrom'), rv = pv_ && pv_.getAttribute('relativeFrom');
+        x = rh === 'page' ? pos(ph_, 0, pw, ai.w) : pos(ph_, mL, pw - mL - mR, ai.w);
+        y = rv === 'page' ? pos(pv_, 0, ph, ai.h) : (rv === 'paragraph' || rv === 'line') ? pos(pv_, paraY, ph, ai.h) : pos(pv_, mT, ph - mT - mB, ai.h);
+        return { k: 'i', x: x, y: y, w: ai.w, h: ai.h, info: ai };
+      }
+
+      S.els.forEach(function(el){
+        if (el.localName !== 'p') return;                       // tables etc. are not drawn in brochure documents
+        var ppr = xKid(el, 'pPr'), carriesSect = !!(ppr && xKid(ppr, 'sectPr'));
+        var fr = ppr && xKid(ppr, 'framePr');
+        var pr = resolveProps(el), at = atomsOf(el, pr.r);
+        pr.p.__sz = pr.r.sz;
+        if (at.pageBreak && page.flow){ newPage(); }
+        at.anchors.forEach(function(ai){ var op = anchorOp(ai, page.y); (wAttr(ai.anchor, 'behindDoc') === '1' || ai.anchor.getAttribute('behindDoc') === '1' ? page.ops[0] : page.ops[2]).push(op); });
+        if (!at.atoms.length){ if (!carriesSect && !fr && !at.anchors.length){ page.y += (pr.p.before || 0) + pr.r.sz * 1.22 * (pr.p.line || 1.08) + (pr.p.after || 0); } return; }
+        if (fr){
+          // a floating text frame: placed at its own page position, drawn on top
+          var fx = (+wAttr(fr, 'x') || 0) / 20, fy = (+wAttr(fr, 'y') || 0) / 20, fw = (+wAttr(fr, 'w') || ((pw - mL - mR) * 20)) / 20;
+          if (wAttr(fr, 'hAnchor') !== 'page') fx += mL; if (wAttr(fr, 'vAnchor') !== 'page') fy += mT;
+          setLines(at.atoms, pr.p, fx, fw, fy, function(line, y, lh, x, availW){
+            emitLine(line, page.ops, x, y, lh, availW, pr.p.jc, 2); return y + lh;
+          });
+          return;
+        }
+        page.y += pr.p.before || 0;
+        var yEnd = setLines(at.atoms, pr.p, mL, pw - mL - mR, page.y, function(line, y, lh, x, availW){
+          if (page.flow && y + lh > ph - mB + 2){ newPage(); y = page.y; }
+          emitLine(line, page.ops, x, y, lh, availW, pr.p.jc, 1);
+          page.flow = true; page.y = y + lh; return y + lh;
+        });
+        page.y = Math.max(page.y, yEnd) + (pr.p.after || 0);
+      });
+      secPages.forEach(function(pg){ if (pg.ops[0].length || pg.ops[1].length || pg.ops[2].length) pagesOut.push(pg); });
+    });
+    // brochure documents: most pages carry a (nearly) full-page picture
+    var big = pagesOut.filter(function(pg){
+      return [].concat(pg.ops[0], pg.ops[1], pg.ops[2]).some(function(o){ return o.k === 'i' && o.w * o.h >= 0.7 * pg.w * pg.h; });
+    }).length;
+    return { pages: pagesOut, picture: pagesOut.length > 0 && big >= Math.max(1, pagesOut.length * 0.5) };
+  }
+
+  async function rasterizeDocx(zip, layout){
+    var cache = {};
+    async function bitmap(info){
+      if (!cache[info.path]) cache[info.path] = (async function(){
+        var bytes = await zip.get(info.path); if (!bytes) return null;
+        var type = /\.png$/i.test(info.path) ? 'image/png' : /\.gif$/i.test(info.path) ? 'image/gif' : /\.(svg)$/i.test(info.path) ? 'image/svg+xml' : /\.webp$/i.test(info.path) ? 'image/webp' : 'image/jpeg';
+        var url = URL.createObjectURL(new Blob([bytes], { type: type }));
+        try { return await new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ rej(); }; im.src = url; }); }
+        catch(e){ return null; } finally { setTimeout(function(){ URL.revokeObjectURL(url); }, 4000); }
+      })();
+      return cache[info.path];
+    }
+    var out = [];
+    for (var i = 0; i < layout.pages.length && i < MAX_PAGES; i++){
+      say('Preparing page ' + (i + 1) + ' of ' + layout.pages.length + '…');
+      var pg = layout.pages[i], S = MAX_SIDE / Math.max(pg.w, pg.h);
+      var cv = document.createElement('canvas'); cv.width = Math.round(pg.w * S); cv.height = Math.round(pg.h * S);
+      var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.setTransform(S, 0, 0, S, 0, 0);
+      for (var L = 0; L < 3; L++){
+        for (var j = 0; j < pg.ops[L].length; j++){
+          var o = pg.ops[L][j];
+          if (o.k === 'i'){
+            var im = await bitmap(o.info); if (!im) continue;
+            var cr = o.info.crop;
+            if (cr){ var sw = im.naturalWidth, sh = im.naturalHeight; ctx.drawImage(im, cr.l * sw, cr.t * sh, sw * (1 - cr.l - cr.r), sh * (1 - cr.t - cr.b), o.x, o.y, o.w, o.h); }
+            else ctx.drawImage(im, o.x, o.y, o.w, o.h);
+          } else {
+            ctx.font = o.f; ctx.fillStyle = o.c; ctx.textBaseline = 'alphabetic'; ctx.fillText(o.s, o.x, o.y);
+            if (o.u){ ctx.fillRect(o.x, o.y + 1.2, o.w, 0.7); }
+          }
+        }
+      }
+      out.push(cv.toDataURL('image/jpeg', 0.9));
+      cv.width = cv.height = 0;
+      await new Promise(function(r){ setTimeout(r, 0); });
+    }
+    return { pages: out, ratio: layout.pages[0].w / layout.pages[0].h };
+  }
+
   async function paginateHtml(holder, label, portrait){
     await (window.html2canvas ? Promise.resolve() : loadScript(H2C));
     // A4 at 96 dpi: landscape 1123 x 794 (default) or portrait 794 x 1123
@@ -515,7 +854,16 @@
     if (converting) return;
     converting = true;
     try {
-      say('Reading ' + file.name + '…');
+      say('Reading ' + file.name + '\u2026');
+      // brochure-style Word files (one picture per page plus text/images on top): draw each page exactly
+      try {
+        var zip = await readZip(file), lay = await layoutDocx(zip);
+        if (lay.picture){
+          var rz = await rasterizeDocx(zip, lay);
+          applyPages(rz.pages, rz.ratio, niceTitle(file.name));
+          return;
+        }
+      } catch(e){ /* not that kind of document (or this browser cannot read it): use the simple converter */ }
       await (window.mammoth ? Promise.resolve() : loadScript(MAMMOTH));
       var res = await window.mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
       var holder = document.createElement('div'); holder.innerHTML = res.value;
@@ -598,6 +946,33 @@
     return new Blob(parts, { type: 'application/pdf' });
   }
 
+  // ---- the three steps ------------------------------------------------------
+  function refreshSteps(){
+    var ok = !!saver;
+    tplBtn.disabled = !ok || typeof TEMPLATE_DOCX === 'undefined';
+    pdfBtn.disabled = !(ok && uploaded);
+    dlBtn.disabled = !(ok && uploaded);
+    var hint = !ok ? 'Downloads are not available in this view' : 'Upload your saved Word file first (step 2)';
+    pdfBtn.title = dlBtn.title = (ok && uploaded) ? '' : hint;
+    var note = document.getElementById('stepNote');
+    if (!ok && !viewOnly){
+      note.hidden = false;
+      note.textContent = 'Downloads are not available in this view. Open the website version of this page (or sign in to Claude) to use steps 1 and 3.';
+    } else note.hidden = true;
+  }
+  function setupTemplate(){
+    tplBtn.addEventListener('click', async function(){
+      if (!saver || typeof TEMPLATE_DOCX === 'undefined') return;
+      tplBtn.disabled = true; var label = tplBtn.textContent; tplBtn.textContent = 'Preparing…';
+      try {
+        var bin = atob(TEMPLATE_DOCX), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        await saver.save({ filename: 'Leavers 2027.docx', data: new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }) });
+      } catch(e){ /* declined or unavailable */ }
+      tplBtn.textContent = label; tplBtn.disabled = false;
+    });
+  }
+
   // ---- download a self-contained copy ------------------------------------
   async function setupDownload(){
     var dl = null;
@@ -612,8 +987,8 @@
         });
       } };
     }
+    saver = dl; refreshSteps();
     if (!dl) return;
-    dlBtn.hidden = false; pdfBtn.hidden = false;
     function fileTitle(){ return (docTitle || 'Flipbook').replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Flipbook'; }
     pdfBtn.addEventListener('click', async function(){
       pdfBtn.disabled = true; var label = pdfBtn.textContent; pdfBtn.textContent = 'Preparing\u2026';
@@ -641,6 +1016,9 @@
           var pagesJs = pages === DEFAULT_PAGES ? await (await fetch('pages.js')).text() : 'const PAGES=[];';
           src = src.replace(extTag, function(){ return '<script>' + pagesJs + '<\/script>'; });
         }
+        var tA = src.indexOf('<script>const TEMPLATE_DOCX'), tZ = tA < 0 ? -1 : src.indexOf('<\/script>', tA);
+        if (tA >= 0 && tZ > tA) src = src.slice(0, tA) + src.slice(tZ + 9);
+        src = src.replace('<script src="template.js"><\/script>', '');
         var inject = '<script>window.VIEW_ONLY=true;<\/script>';
         if (pages !== DEFAULT_PAGES){
           // uploaded pages: drop the built-in brochure images and embed the current pages instead
@@ -726,7 +1104,7 @@
     build();
     setupZoom();
     if (viewOnly){
-      document.getElementById('upBtn').hidden = true;
+      document.getElementById('how').hidden = true;
       // a stray file drop must not navigate away from the flipbook
       ['dragover', 'drop'].forEach(function(t){ document.addEventListener(t, function(e){ e.preventDefault(); }); });
     } else {
@@ -744,6 +1122,8 @@
         var fl = e.dataTransfer && e.dataTransfer.files; if (fl && fl.length) loadFiles(fl);
       });
     }
+    setupTemplate();
+    refreshSteps();
     setupDownload();
     prevBtn.addEventListener('click', function(){ go(-1); });
     nextBtn.addEventListener('click', function(){ go(1); });
