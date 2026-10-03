@@ -43,7 +43,9 @@ The pictures shown before anything is customised are in `pages.js` (the template
 - Every page turns the same way at one constant speed. Turn with drag, scroll, the arrows or the left/right keys.
 - The file upload (PDF, Word, images) is still in the code but switched off in the page.
 - **Zoom** (desktop): buttons, Ctrl + scroll / pinch, or `+` `-` `0`. Drag or scroll to pan while zoomed.
-- Soft per-page shadows for contrast on the white background.
+- Soft per-page shadows for contrast on the white background, and a faint book-spine shadow (a fade into the fold plus a line 10 mm either side)
+  on two-page spreads. The spine is a screen-only effect: it is never in the PDF.
+- The form starts filled with the Cottonridge logo and contact details; customers overwrite them.
 - **PDF quality:** for Word templates the PDF keeps each page's own picture exactly as stored in the Word file (no re-compression)
   and draws the logo and text as a separate sharp layer, on true A4 pages.
 
